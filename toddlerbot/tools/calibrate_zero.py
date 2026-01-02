@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import yaml
 
-from toddlerbot.actuation import dynamixel_cpp
+from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
 from toddlerbot.sim.robot import Robot
 
 # This script is used to calibrate the zero points of the Dynamixel motors.
@@ -40,7 +40,8 @@ def main(robot: Robot, parts: List[str]):
         print("Please answer 'yes' or 'no'.")
 
     controllers = dynamixel_cpp.create_controllers(
-        "ttyCH9344USB[0-9]+",  # "ttyUSB0",
+        "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
+        # "ttyUSB0",
         robot.motor_kp_real,
         robot.motor_kd_real,
         np.zeros(robot.nu, dtype=np.float32),

@@ -11,7 +11,10 @@ from typing import Any, Dict, List
 
 import cv2
 import matplotlib.pyplot as plt
-import moviepy.editor as mpy
+try:
+    import moviepy.editor as mpy
+except ImportError:
+    import moviepy as mpy
 import mujoco
 import mujoco.rollout
 import mujoco.viewer

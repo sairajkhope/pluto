@@ -33,6 +33,7 @@ dependencies = [
     "mediapy",
     "mink",
     "moviepy==1.0.3",
+    "mujoco",
     "mypy",
     "numpy==1.26.4",
     "onnxruntime",
@@ -58,7 +59,8 @@ dependencies = [
     "textual",
     "tqdm",
     "wandb",
-    "zmq"
+    "zmq",
+    "dynamixel-sdk"
 ]
 
 [project.optional-dependencies]

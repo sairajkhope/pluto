@@ -5,14 +5,15 @@ from typing import List
 
 import numpy as np
 
-from toddlerbot.actuation import dynamixel_cpp
+from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
 
 
 # @profile()
 def main():
     """Test motor communication latency and control frequency."""
     controllers = dynamixel_cpp.create_controllers(
-        "ttyCH9344USB[0-9]+",  # "ttyUSB0",
+        "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
+        # "ttyUSB0",
         [900] * 30,
         [0.0] * 30,
         [0.0] * 30,
@@ -23,6 +24,7 @@ def main():
     dynamixel_cpp.initialize(controllers)
     step_idx = 0
     step_time_list: List[float] = []
+
     try:
         while True:
             step_start = time.monotonic()

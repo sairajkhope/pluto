@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial.transform import Rotation as R
 
-from toddlerbot.actuation import dynamixel_cpp
+from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
 from toddlerbot.sensing.IMU import ThreadedIMU
 from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.robot import Robot
@@ -46,7 +46,8 @@ class RealWorld(BaseSim):
         self.controllers = []
         try:
             self.controllers = dynamixel_cpp.create_controllers(
-                "ttyCH9344USB[0-9]+",  # "ttyUSB0",
+                "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
+                # "ttyUSB0",
                 robot.motor_kp_real,
                 robot.motor_kd_real,
                 robot.motor_zero_pos,
