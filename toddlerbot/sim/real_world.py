@@ -35,13 +35,18 @@ class RealWorld(BaseSim):
 
         self.robot = robot
 
+        # Check if IMU is needed based on robot configuration
+        has_imu_config = self.robot.config.get("general", {}).get("has_imu", True)
+        
         self.imu = None
-        try:
-            self.imu = ThreadedIMU()
-            self.imu.start()
-
-        except Exception as e:
-            print(f"IMU not found: {e}")
+        if has_imu_config:
+            try:
+                self.imu = ThreadedIMU()
+                self.imu.start()
+            except Exception as e:
+                print(f"IMU not found: {e}")
+        else:
+            print("IMU disabled in robot configuration (has_imu: false)")
 
         self.controllers = []
         try:
@@ -69,19 +74,20 @@ class RealWorld(BaseSim):
         except Exception as e:
             print(f"Dynamixel controller not found: {e}")
 
-        # Warm up the observation retrieval
-        imu_data = self.imu.get_latest_state()
-        counter = 0
-        while not imu_data:
-            counter += 1
-            print(
-                f"\rWaiting for real-world observation data... [{counter}]",
-                end="",
-                flush=True,
-            )
+        # Warm up the observation retrieval (only if IMU is enabled)
+        if self.imu is not None:
             imu_data = self.imu.get_latest_state()
+            counter = 0
+            while not imu_data:
+                counter += 1
+                print(
+                    f"\rWaiting for real-world observation data... [{counter}]",
+                    end="",
+                    flush=True,
+                )
+                imu_data = self.imu.get_latest_state()
 
-        print("\nData received.")
+            print("\nData received.")
 
     def step(self):
         """Perform a simulation step (no-op for real world interface)."""
