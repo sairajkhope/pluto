@@ -8,7 +8,21 @@ The tool is built on top of the `onshape_to_robot <https://github.com/Rhoban/ons
 
 Obtain the API key and secret key from the `Onshape developer portal <https://dev-portal.onshape.com/keys>`__.
 
-We recommend storing your API key and secret in environment variables, and you can add something like this to your `.bashrc`:
+We recommend storing your API key and secret in environment variables. You have two options:
+
+**Option 1: Using a .env file (Recommended)**
+
+Create a `.env` file in the project root (you can copy from `.env.example`):
+
+::
+
+   ONSHAPE_API=https://cad.onshape.com
+   ONSHAPE_ACCESS_KEY=Your_Access_Key
+   ONSHAPE_SECRET_KEY=Your_Secret_Key
+
+**Option 2: Using .bashrc**
+
+Add the following to your `.bashrc`:
 
 ::
 

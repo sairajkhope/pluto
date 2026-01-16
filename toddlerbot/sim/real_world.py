@@ -4,6 +4,7 @@ Provides RealWorld class to interface with physical ToddlerBot hardware,
 including Dynamixel motor control and IMU sensor integration.
 """
 
+import platform
 import time
 from typing import Dict
 
@@ -11,8 +12,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial.transform import Rotation as R
 
-from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
-from toddlerbot.sensing.IMU import ThreadedIMU
+# Use Python SDK wrapper on macOS for better serial support
+if platform.system() == "Darwin":
+    from toddlerbot.actuation import dynamixel_py_wrapper as dynamixel_cpp
+else:
+    from toddlerbot.actuation import dynamixel_cpp
+
 from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.robot import Robot
 
@@ -41,6 +46,7 @@ class RealWorld(BaseSim):
         self.imu = None
         if has_imu_config:
             try:
+                from toddlerbot.sensing.IMU import ThreadedIMU
                 self.imu = ThreadedIMU()
                 self.imu.start()
             except Exception as e:
@@ -50,9 +56,10 @@ class RealWorld(BaseSim):
 
         self.controllers = []
         try:
+            # On Mac, need full path; on Linux, just device name
+            port_name = "/dev/tty.usbserial-FTAK8D39" if platform.system() == "Darwin" else "ttyUSB0"
             self.controllers = dynamixel_cpp.create_controllers(
-                "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
-                # "ttyUSB0",
+                port_name,
                 robot.motor_kp_real,
                 robot.motor_kd_real,
                 robot.motor_zero_pos,
@@ -74,8 +81,8 @@ class RealWorld(BaseSim):
         except Exception as e:
             print(f"Dynamixel controller not found: {e}")
 
-        # Warm up the observation retrieval (only if IMU is enabled)
-        if self.imu is not None:
+        # Warm up the observation retrieval
+        if self.imu:
             imu_data = self.imu.get_latest_state()
             counter = 0
             while not imu_data:
@@ -203,9 +210,11 @@ class RealWorld(BaseSim):
             if k in motor_kps:
                 dynamixel_kps[i] = motor_kps[k]
 
-        raise NotImplementedError(
-            "Setting motor Kp values is not implemented in the real world interface."
-        )
+        # Reorder and split gains for each controller
+        reordered_kps = dynamixel_kps[self.motor_unsort_idx]
+        splits = np.split(reordered_kps, np.cumsum(self.motor_lens)[:-1])
+        kp_vecs = [x.tolist() for x in splits]
+        dynamixel_cpp.set_motor_kps(self.controllers, kp_vecs)
 
     def close(self):
         """Closes all active components.

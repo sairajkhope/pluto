@@ -1,24 +1,31 @@
 """Test Dynamixel motor control frequency and communication latency."""
 
+import platform
 import time
 from typing import List
 
 import numpy as np
 
-from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
+# Use Python SDK wrapper on macOS for better serial support
+if platform.system() == "Darwin":
+    from toddlerbot.actuation import dynamixel_py_wrapper as dynamixel_cpp
+else:
+    from toddlerbot.actuation import dynamixel_cpp
 
 
 # @profile()
 def main():
     """Test motor communication latency and control frequency."""
+    # On Mac, need full path; on Linux, just device name
+    port_name = "/dev/tty.usbserial-FTAK8D39" if platform.system() == "Darwin" else "ttyUSB0"
+    
     controllers = dynamixel_cpp.create_controllers(
-        "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
-        # "ttyUSB0",
-        [900] * 30,
+        port_name,
+        [2100] * 30,
         [0.0] * 30,
         [0.0] * 30,
         ["extended_position"] * 30,
-        2000000,
+        2000000,  # 2Mbps to match motor configuration
         1,
     )
     dynamixel_cpp.initialize(controllers)

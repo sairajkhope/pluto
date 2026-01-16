@@ -159,8 +159,22 @@ def get_mesh_paths(root: ET.Element) -> tuple:
     if asset_elem is not None:
         # Get all meshes
         for mesh in asset_elem.findall("mesh"):
-            mesh_name = mesh.attrib["file"].split(".")[0]  # Get the file name
-            mesh_files[mesh_name] = mesh.attrib["file"]
+            mesh_file = mesh.attrib["file"]
+            
+            # Try to get mesh name from attribute first (if specified in XML)
+            mesh_name = mesh.attrib.get("name")
+            if mesh_name:
+                mesh_files[mesh_name] = mesh_file
+            
+            # MuJoCo uses the basename without extension as the mesh name
+            # e.g., "merged/arm_430_visual.stl" -> "arm_430_visual"
+            mesh_basename = os.path.basename(mesh_file).split(".")[0]
+            mesh_files[mesh_basename] = mesh_file
+            
+            # Also store with full path (without extension) for backwards compatibility
+            mesh_name_with_path = mesh_file.split(".")[0]
+            if mesh_name_with_path != mesh_basename:
+                mesh_files[mesh_name_with_path] = mesh_file
 
         for material in asset_elem.findall("material"):
             materials[material.attrib["name"]] = material.attrib.get("rgba", "1 1 1 1")
@@ -188,9 +202,18 @@ def convert(robot_name: str, asset_file_prefix: str, fix_extra_joints: list = []
         asset_file_prefix: Prefix path for asset files
         fix_extra_joints: List of joint keywords to fix (make non-actuated)
     """
-    mjcf_file = os.path.join(
-        "toddlerbot", "descriptions", robot_name, f"{robot_name}_pos.xml"
-    )
+    # Generate URDF for sysID robots from _fixed.xml instead of _pos.xml
+    is_sysid = robot_name.startswith("sysID")
+    
+    # For sysID robots, use _fixed.xml instead of _pos.xml
+    if is_sysid:
+        mjcf_file = os.path.join(
+            "toddlerbot", "descriptions", robot_name, f"{robot_name}_fixed.xml"
+        )
+    else:
+        mjcf_file = os.path.join(
+            "toddlerbot", "descriptions", robot_name, f"{robot_name}_pos.xml"
+        )
     urdf_file = os.path.join(
         "toddlerbot", "descriptions", robot_name, f"{robot_name}.urdf"
     )
@@ -330,7 +353,13 @@ def convert(robot_name: str, asset_file_prefix: str, fix_extra_joints: list = []
                 }
 
             elif geom_type == mujoco.mjtGeom.mjGEOM_MESH:
-                rel_mesh_path = os.path.join(asset_file_prefix, mesh_files[mesh_name])
+                # For sysID robots, mesh paths are already relative to descriptions/
+                # For other robots, prepend asset_file_prefix
+                if mesh_files[mesh_name].startswith("../"):
+                    rel_mesh_path = mesh_files[mesh_name]
+                else:
+                    rel_mesh_path = os.path.join(asset_file_prefix, mesh_files[mesh_name])
+                
                 abs_mesh_path = os.path.join(os.path.dirname(mjcf_file), rel_mesh_path)
 
                 if os.path.exists(abs_mesh_path):

@@ -8,6 +8,7 @@ import time
 from functools import partial
 from typing import Dict, List, Tuple
 
+import joblib
 import numpy as np
 import numpy.typing as npt
 import optuna
@@ -45,16 +46,37 @@ def load_datasets(robot: Robot, data_path: str):
         ValueError: If no data files are found at the specified path.
     """
 
-    # Use glob to find all pickle files matching the pattern
+    # Try lz4 format first (modern format), fallback to pkl (legacy)
+    lz4_file_path = os.path.join(data_path, "log_data.lz4")
     pickle_file_path = os.path.join(data_path, "log_data.pkl")
-    if not os.path.exists(pickle_file_path):
-        raise ValueError("No data files found")
-
-    with open(pickle_file_path, "rb") as f:
-        data_dict = pickle.load(f)
+    
+    if os.path.exists(lz4_file_path):
+        data_dict = joblib.load(lz4_file_path)
+    elif os.path.exists(pickle_file_path):
+        with open(pickle_file_path, "rb") as f:
+            data_dict = pickle.load(f)
+    else:
+        raise ValueError("No data files found (looking for log_data.lz4 or log_data.pkl)")
 
     obs_list: List[Obs] = data_dict["obs_list"]
-    motor_angles_list: List[Dict[str, float]] = data_dict["motor_angles_list"]
+    # Handle both old and new data formats
+    if "motor_angles_list" in data_dict:
+        motor_angles_list: List[Dict[str, float]] = data_dict["motor_angles_list"]
+    elif "action_list" in data_dict:
+        # Convert action arrays to motor angle dictionaries
+        action_list = data_dict["action_list"]
+        motor_angles_list = []
+        for action in action_list:
+            motor_angles = dict(zip(robot.motor_ordering, action))
+            motor_angles_list.append(motor_angles)
+    else:
+        raise ValueError("Data file missing motor angles/action data")
+    
+    # Load ckpt_dict if it exists as a separate file
+    ckpt_dict_path = os.path.join(data_path, "ckpt_dict.pkl")
+    if os.path.exists(ckpt_dict_path):
+        with open(ckpt_dict_path, "rb") as f:
+            data_dict["ckpt_dict"] = pickle.load(f)
 
     obs_pos_dict: Dict[str, List[npt.NDArray[np.float32]]] = {}
     action_dict: Dict[str, List[npt.NDArray[np.float32]]] = {}

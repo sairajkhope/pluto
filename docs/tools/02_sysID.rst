@@ -10,7 +10,7 @@ Hardware Setup
 You will need to purchase the sysID section in the :ref:`bill_of_materials`.
 
 For 3D-printed parts, you can find all the sliced plates in the `MakerWorld <https://makerworld.com/en/models/1733983>`_ 
-and the CAD files in the `Onshape document <https://cad.onshape.com/documents/1fb5d9a88ac086a053c4340b>`_.
+and the CAD files in the `Onshape document <https://cad.onshape.com/documents/01b1c8677a4515af1e42f581>`_.
 
 We use 21700 cells as loads to adjust the motor load weight.
 
@@ -78,7 +78,7 @@ SysID Data Collection
 Run the following command with the appropriate robot name to collect data.
 For motors in the 2XC430, 2XL430, XC330, XC430, and XM430 series, use the corresponding robot names: 
 sysID_XC430, sysID_XL430, sysID_XC330, sysID_XC430, and sysID_XM430, respectively.
-If your motor is not listed, refer to our `Onshape document <https://cad.onshape.com/documents/1fb5d9a88ac086a053c4340b>`_ to set it up in Onshape. 
+If your motor is not listed, refer to our `Onshape document <https://cad.onshape.com/documents/01b1c8677a4515af1e42f581>`_ to set it up in Onshape. 
 Then, use the :ref:`onshape_to_robot` tool to generate the XML file for the motor. For reference, check ``toddlerbot/descriptions/sysID_XC430``
 for the expecetd outcome.
 

@@ -117,9 +117,9 @@ def plot_results(
     for i, obs in enumerate(obs_list):
         time_obs_list.append(obs.time)
         # lin_vel_obs_list.append(obs.lin_vel)
-        ang_vel_obs_list.append(obs.ang_vel)
-        pos_obs_list.append(obs.pos)
-        euler_obs_list.append(obs.rot.as_euler("xyz", degrees=False))
+        ang_vel_obs_list.append(obs.ang_vel if obs.ang_vel is not None else np.zeros(3))
+        pos_obs_list.append(obs.pos if obs.pos is not None else np.zeros(3))
+        euler_obs_list.append(obs.rot.as_euler("xyz", degrees=False) if obs.rot is not None else np.zeros(3))
         if obs.motor_cur is not None:
             cur_total_list.append(sum(abs(obs.motor_cur)))
 
@@ -165,7 +165,7 @@ def plot_results(
 
     plot_loop_time(loop_time_list, exp_folder_path, blocking=True)
 
-    if "sysID" in robot.name:
+    if "sysID" in robot.name and "joint_0" in motor_vel_dict and len(motor_vel_dict["joint_0"]) > 0:
         plot_motor_vel_tor_mapping(
             motor_vel_dict["joint_0"],
             motor_tor_dict["joint_0"],

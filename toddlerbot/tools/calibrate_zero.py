@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import platform
 from typing import List
 
 import numpy as np
@@ -39,9 +40,11 @@ def main(robot: Robot, parts: List[str]):
 
         print("Please answer 'yes' or 'no'.")
 
+    # On Mac, need full path; on Linux, just device name
+    port_name = "/dev/tty.usbserial-FTAK8D39" if platform.system() == "Darwin" else "ttyUSB0"
+    
     controllers = dynamixel_cpp.create_controllers(
-        "/dev/ttyUSB*",  # "/dev/cu.usbserial-FTAK8D39",
-        # "ttyUSB0",
+        port_name,
         robot.motor_kp_real,
         robot.motor_kd_real,
         np.zeros(robot.nu, dtype=np.float32),

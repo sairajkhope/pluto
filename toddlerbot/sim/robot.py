@@ -200,6 +200,15 @@ class Robot:
         for joint_name in self.joint_ordering:
             self.joint_limits[joint_name] = get_limits(joint_name)
 
+        # Build joint_to_motor_name mapping based on transmission type
+        self.joint_to_motor_name: Dict[str, List[str]] = {}
+        for motor_name in self.motor_ordering:
+            transmission = self.get_transmission(motor_name)
+            if transmission == "none":
+                # Simple 1:1 mapping: joint and motor have the same name
+                self.joint_to_motor_name[motor_name] = [motor_name]
+            # Add other transmission types as needed
+
         if "neck_yaw_driven" in self.joint_limits and "neck_pitch" in self.joint_limits:
             self.neck_joint_limits = np.array(
                 [self.joint_limits["neck_yaw_driven"], self.joint_limits["neck_pitch"]],
