@@ -15,13 +15,12 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import wandb
 from tqdm import tqdm
 
+import wandb
 from toddlerbot.policies import BasePolicy
 from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.mujoco_sim import MuJoCoSim
-from toddlerbot.sim.real_world import RealWorld
 from toddlerbot.sim.robot import Robot
 from toddlerbot.utils.comm_utils import ZMQNode, sync_time
 from toddlerbot.utils.misc_utils import dump_profiling_data  # , profile
@@ -41,6 +40,7 @@ def get_policy_class(policy_name: str) -> Type[BasePolicy]:
         f"toddlerbot.policies.{policy_name}_policy",
         f"toddlerbot.policies.{policy_name}",
     ]
+
     def first_upper(s: str) -> str:
         return s[0].upper() + s[1:] if s else s
 
@@ -521,6 +521,8 @@ def main(args=None):
         init_motor_pos = sim.get_observation().motor_pos
 
     elif args.sim == "real":
+        from toddlerbot.sim.real_world import RealWorld
+
         sim = RealWorld(robot)
         init_motor_pos = sim.get_observation(retries=-1).motor_pos
 

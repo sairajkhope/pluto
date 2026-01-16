@@ -1,0 +1,18 @@
+# Core Sphinx & extensions
+sphinx>=7.2
+furo>=2024.7.18
+sphinx-autobuild>=2024.4.0
+sphinx-tabs>=3.4.5
+sphinx-design>=0.6.0
+sphinx-autodoc-typehints>=2.0.1
+
+# Markdown / MyST support (optional but recommended if you use Markdown docs)
+myst-parser>=3.0.1
+
+# Useful extras for nice docs
+sphinx-copybutton>=0.5.2
+sphinxcontrib-mermaid>=0.9.2
+
+# Tools often needed by autodoc / type hints
+typing-extensions>=4.12.2
+importlib-metadata>=8.4.0

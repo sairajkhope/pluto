@@ -30,7 +30,7 @@ Refer to [this page](https://hshi74.github.io/toddlerbot/software/01_setup.html)
 - The `motion` folder contains carefully crafted keyframe animations designed for ToddlerBot. For example, you can run
 
     ```
-    python toddlerbot/policies/run_policy.py --policy replay --run-name push_up --vis view
+    python toddlerbot/policies/run_policy.py --policy replay --path motion/push_up_2xc.lz4 --vis view
     ```
 
     to see the push up motion in MuJoCo. You're very welcome to contribute your keyframe animation to our repository by
