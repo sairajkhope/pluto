@@ -1,0 +1,139 @@
+<?xml version="1.0" ?>
+<robot name="sysID_XC430">
+  <mujoco>
+    <compiler strippath="false" balanceinertia="true" discardvisual="false"/>
+  </mujoco>
+  <link name="world">
+    <inertial>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <mass value="0.0"/>
+      <inertia ixx="0.0" iyy="0.0" izz="0.0" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+  <link name="arm_430">
+    <inertial>
+      <origin xyz="0.054272 -0.0167758 0.0202686" rpy="3.14159 -1.5708 0.0"/>
+      <mass value="0.0154"/>
+      <inertia ixx="1.05154e-05" iyy="9.83742e-06" izz="2.81149e-06" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="arm_430_visual">
+      <origin xyz="0.054272 -0.0167758 0.0202686" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="0.08 0.03 0.04"/>
+      </geometry>
+      <material name="arm_430_visual_material"/>
+    </visual>
+    <collision name="arm_430_collision">
+      <origin xyz="0.054272 -0.0167758 0.0202686" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="0.08 0.03 0.04"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint type="fixed" name="world2arm_430_fixed">
+    <parent link="world"/>
+    <child link="arm_430"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+  </joint>
+  <link name="xc430">
+    <inertial>
+      <origin xyz="0.0116499 -5.78134e-06 0.01868" rpy="1.56612 -0.00445248 1.57139"/>
+      <mass value="0.0686"/>
+      <inertia ixx="1.9187647790057196e-05" iyy="1.6913078119693286e-05" izz="1.1273374090249531e-05" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="xc430_visual">
+      <origin xyz="0.0116499 -5.78134e-06 0.01868" rpy="1.5708 -1.5708 0.0"/>
+      <geometry>
+        <box size="0.046 0.05 0.028"/>
+      </geometry>
+      <material name="xc430_visual_material"/>
+    </visual>
+    <collision name="xc430_collision">
+      <origin xyz="0.0116499 -5.78134e-06 0.01868" rpy="1.5708 -1.5708 0.0"/>
+      <geometry>
+        <box size="0.046 0.05 0.028"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="joint_0_body">
+    <inertial>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-09" iyy="1e-09" izz="1e-09" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+  <joint type="revolute" name="joint_0">
+    <parent link="arm_430"/>
+    <child link="joint_0_body"/>
+    <origin xyz="0.035272 -0.045682 0.0202686" rpy="-1.5708 0.0 -1.5708"/>
+    <axis xyz="0.0 0.0 1.0"/>
+    <limit lower="-1.5707963267948113" upper="1.5707963267949818" effort="100" velocity="100"/>
+  </joint>
+  <joint type="fixed" name="joint_0_offset">
+    <parent link="joint_0_body"/>
+    <child link="xc430"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+  </joint>
+  <link name="mount_xc430">
+    <inertial>
+      <origin xyz="-0.0286571 -0.00767536 0.0144" rpy="1.5708 0.0 -0.163567"/>
+      <mass value="0.01785"/>
+      <inertia ixx="1.555792417738116e-05" iyy="1.52773e-05" izz="4.375315822618842e-06" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="mount_xc430_visual">
+      <origin xyz="-0.0286571 -0.00767536 0.0144" rpy="3.14159 0.0 1.5708"/>
+      <geometry>
+        <box size="0.04 0.04 0.03"/>
+      </geometry>
+      <material name="mount_xc430_visual_material"/>
+    </visual>
+    <collision name="mount_xc430_collision">
+      <origin xyz="-0.0286571 -0.00767536 0.0144" rpy="3.14159 0.0 1.5708"/>
+      <geometry>
+        <box size="0.04 0.04 0.03"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint type="fixed" name="xc4302mount_xc430_fixed">
+    <parent link="xc430"/>
+    <child link="mount_xc430"/>
+    <origin xyz="0.004 -0.01425 0.013" rpy="1.5708 4.44089e-16 -3.14159"/>
+  </joint>
+  <link name="load_large">
+    <inertial>
+      <origin xyz="-0.0458128 -0.0103659 -0.0717994" rpy="-0.00102956 0.000218755 1.57077"/>
+      <mass value="0.54323"/>
+      <inertia ixx="0.0009930280285788214" iyy="0.0006564962688403119" izz="0.0004025717025808656" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="load_large_visual">
+      <origin xyz="-0.0458128 -0.0103659 -0.0717994" rpy="-1.5708 -1.55431e-15 -3.14159"/>
+      <geometry>
+        <box size="0.15 0.08 0.06"/>
+      </geometry>
+      <material name="load_large_visual_material"/>
+    </visual>
+    <collision name="load_large_collision">
+      <origin xyz="-0.0458128 -0.0103659 -0.0717994" rpy="-1.5708 -1.55431e-15 -3.14159"/>
+      <geometry>
+        <box size="0.15 0.08 0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint type="fixed" name="arm_4302load_large_fixed">
+    <parent link="arm_430"/>
+    <child link="load_large"/>
+    <origin xyz="0.008272 -0.007682 0.0102686" rpy="-1.5708 -1.11022e-15 -3.14159"/>
+  </joint>
+  <material name="arm_430_visual_material">
+    <color rgba="0.615686 0.811765 0.929412 1"/>
+  </material>
+  <material name="xc430_visual_material">
+    <color rgba="0.396033 0.508784 0.711268 1"/>
+  </material>
+  <material name="mount_xc430_visual_material">
+    <color rgba="0.647059 0.647059 0.647059 1"/>
+  </material>
+  <material name="load_large_visual_material">
+    <color rgba="0.699747 0.72503 0.736949 1"/>
+  </material>
+</robot>
