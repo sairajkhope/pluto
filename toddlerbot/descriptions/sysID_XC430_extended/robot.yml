@@ -1,0 +1,11 @@
+robot: {}
+general:
+    has_imu: false
+motors:
+    joint_0:
+        motor: XC430
+        group: sysID
+        zero_pos: 0
+        home_pos: 0
+        kp: 2100.0
+        kd: 0.0

@@ -9,60 +9,47 @@
       <mass value="0.0"/>
       <inertia ixx="0.0" iyy="0.0" izz="0.0" ixy="0" ixz="0" iyz="0"/>
     </inertial>
-    <visual name="world_visual">
-      <origin xyz="0.0518662 -0.045532 0.416132" rpy="0.0 0.0 0.0"/>
+  </link>
+  <link name="base">
+    <inertial>
+      <origin xyz="0.0267655 -0.0456118 0.399612" rpy="1.24496 0.00507289 1.57051"/>
+      <mass value="0.1339"/>
+      <inertia ixx="0.0002805477996761602" iyy="0.000264497711439828" izz="5.3611688884011744e-05" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="base_visual">
+      <origin xyz="0.0267655 -0.0456118 0.399612" rpy="0.0 0.0 0.0"/>
       <geometry>
         <mesh filename="assets/merged/base_visual.stl" scale="1.0 1.0 1.0"/>
       </geometry>
       <material name="base_visual_material"/>
     </visual>
-    <collision name="world_collision">
-      <origin xyz="0.0518662 -0.045532 0.416132" rpy="0.0 0.0 0.0"/>
+    <collision name="base_collision">
+      <origin xyz="0.0267655 -0.0456118 0.399612" rpy="0.0 0.0 0.0"/>
       <geometry>
         <mesh filename="assets/merged/base_collision.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
-  <link name="xc430">
-    <inertial>
-      <origin xyz="0.00568003 -0.00764994 -0.0142442" rpy="-1.69977 -1.5663 -3.00795"/>
-      <mass value="0.0686"/>
-      <inertia ixx="1.918764779005719e-05" iyy="1.691307811969328e-05" izz="1.1273374090249528e-05" ixy="0" ixz="0" iyz="0"/>
-    </inertial>
-    <visual name="xc430_visual">
-      <origin xyz="0.00568003 -0.00764994 -0.0142442" rpy="-1.5708 -2.22045e-16 3.14159"/>
-      <geometry>
-        <mesh filename="assets/merged/xc430_visual.stl" scale="1.0 1.0 1.0"/>
-      </geometry>
-      <material name="xc430_visual_material"/>
-    </visual>
-    <collision name="xc430_collision">
-      <origin xyz="0.00568003 -0.00764994 -0.0142442" rpy="-1.5708 -2.22045e-16 3.14159"/>
-      <geometry>
-        <mesh filename="assets/merged/xc430_collision.stl" scale="1.0 1.0 1.0"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint type="fixed" name="world2xc430_fixed">
+  <joint type="fixed" name="world2base_fixed">
     <parent link="world"/>
-    <child link="xc430"/>
-    <origin xyz="0.00855219 -0.059932 0.376238" rpy="-1.5708 0.0 -3.14159"/>
+    <child link="base"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
   </joint>
   <link name="arm_430">
     <inertial>
-      <origin xyz="-0.0289062 -9.792480000000001e-18 -0.019" rpy="0.0 0.0 1.5708"/>
-      <mass value="0.0154"/>
-      <inertia ixx="1.05154e-05" iyy="9.83742e-06" izz="2.81149e-06" ixy="0" ixz="0" iyz="0"/>
+      <origin xyz="-0.0787491 9.81819e-06 -0.019" rpy="0.0 0.0 1.57125"/>
+      <mass value="0.3549"/>
+      <inertia ixx="0.0005559830440384413" iyy="0.00034075495596155874" izz="0.000291749" ixy="0" ixz="0" iyz="0"/>
     </inertial>
     <visual name="arm_430_visual">
-      <origin xyz="-0.0289062 -9.90964e-18 -0.019" rpy="3.14159 -1.5708 0.0"/>
+      <origin xyz="-0.0787491 9.81819e-06 -0.019" rpy="3.14159 -1.5708 0.0"/>
       <geometry>
         <mesh filename="assets/merged/arm_430_visual.stl" scale="1.0 1.0 1.0"/>
       </geometry>
       <material name="arm_430_visual_material"/>
     </visual>
     <collision name="arm_430_collision">
-      <origin xyz="-0.0289062 -9.90964e-18 -0.019" rpy="3.14159 -1.5708 0.0"/>
+      <origin xyz="-0.0787491 9.81819e-06 -0.019" rpy="3.14159 -1.5708 0.0"/>
       <geometry>
         <mesh filename="assets/merged/arm_430_collision.stl" scale="1.0 1.0 1.0"/>
       </geometry>
@@ -76,64 +63,27 @@
     </inertial>
   </link>
   <joint type="revolute" name="joint_0">
-    <parent link="xc430"/>
+    <parent link="base"/>
     <child link="joint_0_body"/>
-    <origin xyz="-0.013 0.004 -0.01425" rpy="1.5708 0.0 -1.5708"/>
+    <origin xyz="0.0215522 -0.045682 0.372238" rpy="-3.14159 -1.5708 0.0"/>
     <axis xyz="0.0 0.0 1.0"/>
-    <limit lower="-1.5707963267948948" upper="1.5707963267948983" effort="100" velocity="100"/>
+    <limit lower="0.0" upper="3.14159265358979" effort="100" velocity="100"/>
   </joint>
   <joint type="fixed" name="joint_0_offset">
     <parent link="joint_0_body"/>
     <child link="arm_430"/>
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
   </joint>
-  <link name="load_large">
-    <inertial>
-      <origin xyz="-0.046239 -0.00952792 -0.0641291" rpy="0.00660238 -0.00530411 1.57107"/>
-      <mass value="0.54325"/>
-      <inertia ixx="0.001344541414102266" iyy="0.0008576018878506448" izz="0.0005841586980470913" ixy="0" ixz="0" iyz="0"/>
-    </inertial>
-    <visual name="load_large_visual">
-      <origin xyz="-0.046239 -0.00952792 -0.0641291" rpy="-2.40624e-15 0.0 2.098e-16"/>
-      <geometry>
-        <mesh filename="assets/merged/load_large_visual.stl" scale="1.0 1.0 1.0"/>
-      </geometry>
-      <material name="load_large_visual_material"/>
-    </visual>
-    <collision name="load_large_collision">
-      <origin xyz="-0.046239 -0.00952792 -0.0641291" rpy="-2.40624e-15 0.0 2.098e-16"/>
-      <geometry>
-        <mesh filename="assets/merged/load_large_collision.stl" scale="1.0 1.0 1.0"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint type="fixed" name="arm_4302load_large_fixed">
-    <parent link="arm_430"/>
-    <child link="load_large"/>
-    <origin xyz="-0.038 -0.01 0.027" rpy="3.14159 -1.5708 0.0"/>
-  </joint>
   <material name="base_visual_material">
-    <color rgba="0.231373 0.380392 0.705882 1"/>
+    <color rgba="0.315732 0.44617 0.708641 1"/>
   </material>
   <material name="base_collision_material">
-    <color rgba="0.231373 0.380392 0.705882 1"/>
-  </material>
-  <material name="xc430_visual_material">
-    <color rgba="0.396033 0.508784 0.711268 1"/>
-  </material>
-  <material name="xc430_collision_material">
-    <color rgba="0.396033 0.508784 0.711268 1"/>
+    <color rgba="0.315732 0.44617 0.708641 1"/>
   </material>
   <material name="arm_430_visual_material">
-    <color rgba="0.615686 0.811765 0.929412 1"/>
+    <color rgba="0.634878 0.653046 0.669534 1"/>
   </material>
   <material name="arm_430_collision_material">
-    <color rgba="0.615686 0.811765 0.929412 1"/>
-  </material>
-  <material name="load_large_visual_material">
-    <color rgba="0.902717 0.907988 0.911331 1"/>
-  </material>
-  <material name="load_large_collision_material">
-    <color rgba="0.902717 0.907988 0.911331 1"/>
+    <color rgba="0.634878 0.653046 0.669534 1"/>
   </material>
 </robot>

@@ -927,21 +927,17 @@ def configure_mjx(root: ET.Element, robot_config: dict):
     """Configures robot for MJX (GPU-accelerated MuJoCo) simulation."""
 
     def is_valid_pair(g1, g2):
-        is_foot_foot = (
-            robot_config["foot_name"] in g1 and robot_config["foot_name"] in g2
-        )
-        is_hand_hand = (
-            robot_config["hand_name"] in g1 and robot_config["hand_name"] in g2
-        )
+        foot_name = robot_config.get("foot_name", "")
+        hand_name = robot_config.get("hand_name", "")
+        
+        is_foot_foot = foot_name and (foot_name in g1 and foot_name in g2)
+        is_hand_hand = hand_name and (hand_name in g1 and hand_name in g2)
         same_side = ("left" in g1 and "left" in g2) or ("right" in g1 and "right" in g2)
         is_foot_hand_same_side = (
-            robot_config["foot_name"] in g1
-            and robot_config["hand_name"] in g2
-            and same_side
-        ) or (
-            robot_config["foot_name"] in g2
-            and robot_config["hand_name"] in g1
-            and same_side
+            foot_name and hand_name and (
+                (foot_name in g1 and hand_name in g2 and same_side) or
+                (foot_name in g2 and hand_name in g1 and same_side)
+            )
         )
         return is_foot_foot or is_hand_hand or is_foot_hand_same_side
 
@@ -1010,6 +1006,148 @@ def write_mjx_fixed_xml(root: ET.Element, target_robot_dir: str, robot_config: d
     create_scene_xml(root, target_robot_dir, variant="_mjx_fixed")
 
 
+def assemble_sysid_xml(robot_name: str, torso_name: str):
+    """Assembles XML for sysID robots with simplified processing.
+    
+    sysID robots are simple single-joint fixtures that don't need arm/leg assembly,
+    collision processing, or complex kinematics. They have a different XML structure
+    than full humanoid robots.
+    """
+    description_dir = os.path.join("toddlerbot", "descriptions")
+    target_robot_dir = os.path.join(description_dir, robot_name)
+    assembly_dir = os.path.join(description_dir, "assemblies")
+    
+    # Create target directory
+    os.makedirs(target_robot_dir, exist_ok=True)
+    target_assets_dir = os.path.join(target_robot_dir, "assets")
+    os.makedirs(target_assets_dir, exist_ok=True)
+    
+    # Load global config
+    global_config_path = os.path.join(description_dir, "default.yml")
+    with open(global_config_path, "r") as f:
+        global_config = yaml.safe_load(f)
+    
+    # Copy assets from assemblies to robot directory
+    source_assets_dir = os.path.join(assembly_dir, torso_name, "assets")
+    if os.path.exists(source_assets_dir):
+        # Copy merged directory
+        source_merged = os.path.join(source_assets_dir, "merged")
+        target_merged = os.path.join(target_assets_dir, "merged")
+        if os.path.exists(source_merged):
+            if os.path.exists(target_merged):
+                shutil.rmtree(target_merged)
+            shutil.copytree(source_merged, target_merged)
+    
+    # Parse the source XML for the fixed version
+    torso_xml_path = os.path.join(assembly_dir, torso_name, "robot.xml")
+    
+    def create_sysid_fixed_xml(source_path: str, output_path: str, use_motors: bool = True):
+        """Create a fixed-base sysID XML file."""
+        tree = ET.parse(source_path)
+        root = tree.getroot()
+        root.set("model", robot_name)
+        
+        # Update compiler meshdir
+        compiler = root.find("compiler")
+        if compiler is not None:
+            compiler.set("meshdir", "assets")
+        
+        # Option element is already in source XML, no need to modify it
+        
+        # Update joint range to [0, π] so mean is at 90 degrees for sysID
+        # This ensures the chirp signal oscillates around 90° instead of 0°
+        for joint in root.iter("joint"):
+            if joint.get("name") == "joint_0":
+                joint.set("range", "0.0 3.14159265358979")
+                print(f"  Updated joint_0 range to [0, π] for 90° center position")
+        
+        # For sysID robots, the structure is already fixed-base (no freejoint)
+        # Just need to update the actuator settings
+        
+        # Update actuator kp values if using motor control
+        actuators = root.find("actuator")
+        if actuators is not None and use_motors:
+            for actuator in actuators:
+                actuator_name = actuator.attrib.get("name", "")
+                if actuator_name in global_config["motors"]:
+                    kp_sim = (
+                        global_config["motors"][actuator_name]["kp"]
+                        / global_config["actuators"]["kp_ratio"]
+                    )
+                    actuator.set("kp", f"{kp_sim}")
+        
+        # Add keyframe element if not present
+        keyframe_elem = root.find("keyframe")
+        if keyframe_elem is None:
+            keyframe_elem = ET.SubElement(root, "keyframe")
+        
+        # Create home keyframe
+        if actuators is not None:
+            home_pos_values = []
+            for actuator in actuators:
+                actuator_name = actuator.attrib.get("name", "")
+                if actuator_name in global_config["motors"]:
+                    home_pos_values.append(global_config["motors"][actuator_name]["home_pos"])
+            
+            if home_pos_values:
+                ctrl_str = " ".join(str(v) for v in home_pos_values)
+                ET.SubElement(
+                    keyframe_elem,
+                    "key",
+                    {"name": "home", "qpos": ctrl_str, "ctrl": ctrl_str},
+                )
+        
+        pretty_write_xml(root, output_path)
+        return root
+    
+    # Create the _fixed.xml (with motor kp values)
+    fixed_xml_path = os.path.join(target_robot_dir, f"{robot_name}_fixed.xml")
+    fixed_root = create_sysid_fixed_xml(torso_xml_path, fixed_xml_path, use_motors=True)
+    create_scene_xml(fixed_root, target_robot_dir, variant="_fixed")
+    
+    # Create the _pos_fixed.xml (position control, uses defaults from XML)
+    pos_fixed_xml_path = os.path.join(target_robot_dir, f"{robot_name}_pos_fixed.xml")
+    pos_fixed_root = create_sysid_fixed_xml(torso_xml_path, pos_fixed_xml_path, use_motors=False)
+    create_scene_xml(pos_fixed_root, target_robot_dir, variant="_pos_fixed")
+    
+    # Create robot.yml with sysID configuration
+    robot_config = {}
+    motor_config_local = {}
+    
+    # Get motor config from global config
+    actuators = fixed_root.find("actuator")
+    if actuators is not None:
+        for actuator in actuators:
+            actuator_name = actuator.attrib.get("name", "")
+            if actuator_name in global_config["motors"]:
+                motor_config_local[actuator_name] = {
+                    "motor": global_config["motors"][actuator_name]["motor"],
+                    "group": global_config["motors"][actuator_name]["group"],
+                    "zero_pos": global_config["motors"][actuator_name]["zero_pos"],
+                    "home_pos": global_config["motors"][actuator_name]["home_pos"],
+                    "kp": global_config["motors"][actuator_name]["kp"],
+                    "kd": global_config["motors"][actuator_name]["kd"],
+                }
+    
+    local_config = {
+        "robot": robot_config,
+        "general": {"has_imu": False},
+    }
+    if motor_config_local:
+        local_config["motors"] = motor_config_local
+    
+    with open(os.path.join(target_robot_dir, "robot.yml"), "w") as f:
+        yaml.dump(
+            local_config,
+            f,
+            indent=4,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    
+    print(f"sysID robot {robot_name} assembled successfully.")
+
+
 def assemble_xml(robot_name: str, torso_name: str, arm_name: str, leg_name: str):
     """Assembles a URDF file for a robot based on the provided configuration.
 
@@ -1018,6 +1156,11 @@ def assemble_xml(robot_name: str, torso_name: str, arm_name: str, leg_name: str)
     Raises:
         ValueError: If a source URDF for a specified link cannot be found.
     """
+    # Handle sysID robots with simplified assembly
+    if robot_name.startswith("sysID"):
+        assemble_sysid_xml(robot_name, torso_name)
+        return
+    
     # Parse the target URDF
     description_dir = os.path.join("toddlerbot", "descriptions")
     target_robot_dir = os.path.join(description_dir, robot_name)
@@ -1400,7 +1543,7 @@ def assemble_xml(robot_name: str, torso_name: str, arm_name: str, leg_name: str)
     if leg_name:
         add_waist_constraints(torso_root, global_config["kinematics"])
 
-    if "gripper" in robot_config["hand_name"]:
+    if "hand_name" in robot_config and "gripper" in robot_config["hand_name"]:
         add_gripper_constraints(torso_root, global_config["kinematics"])
 
     update_joint_params(torso_root, global_config["joints"])

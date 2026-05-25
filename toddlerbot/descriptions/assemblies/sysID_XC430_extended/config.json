@@ -1,0 +1,15 @@
+{
+    "document_id": "01b1c8677a4515af1e42f581",
+    "output_format": "mujoco",
+    "robot_name": "sysID_XC430_extended",
+    "assembly_name": "sysID_XC430_extended",
+    "include_configuration_suffix": false,
+    "draw_frames": true,
+    "merge_stls": true,
+    "simplify_stls": true,
+    "maxSTLSize": 1,
+    "joint_properties": {},
+    "equalities": {},
+    "workspace_id": "04f325bf94af0839fb12fa93",
+    "element_id": "bf799a6c83b2e767d66c9120"
+}

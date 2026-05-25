@@ -13,10 +13,5 @@
     <camera name="side" pos="0 -1 0.25" xyaxes="1 0 0 0 1 3" mode="trackcom"/>
     <camera name="top" pos="0 0 0.65" xyaxes="0 1 0 -1 0 0" mode="trackcom"/>
     <camera name="front" pos="1 0 0.25" xyaxes="0 1 0 -1 0 3" mode="trackcom"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" condim="3"/>
   </worldbody>
-  <asset>
-    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
-    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.0"/>
-  </asset>
 </mujoco>

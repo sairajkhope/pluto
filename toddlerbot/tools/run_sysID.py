@@ -8,6 +8,7 @@ import time
 from functools import partial
 from typing import Dict, List, Tuple
 
+
 import joblib
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +27,18 @@ from toddlerbot.visualization.vis_plot import (
 # This script is used to optimize the parameters of the robot's dynamics model using system identification (SysID) techniques.
 
 logger = _get_library_root_logger()
+
+
+def _mujoco_sim_for_sysid(robot: Robot) -> MuJoCoSim:
+    """Build MuJoCoSim consistent with the MJCF actuator type.
+
+    SysID fixture models use `<position>` actuators; control must be joint/motor
+    targets, not PD torques. Full ToddlerBot torque models use the default
+    `MotorController` with torque actuators.
+    """
+    if "sysID" in robot.name:
+        return MuJoCoSim(robot, fixed_base=True, controller_type="position")
+    return MuJoCoSim(robot, fixed_base=True)
 
 
 def load_datasets(robot: Robot, data_path: str):
@@ -192,12 +205,13 @@ def optimize_parameters(
     """
 
     if sim_name == "mujoco":
-        sim = MuJoCoSim(robot, fixed_base=True)
+        sim = _mujoco_sim_for_sysid(robot)
 
     else:
         raise ValueError("Invalid simulator")
 
-    if "sysID" in robot.name:
+    use_torque_motor_model = isinstance(sim.controller, MotorController)
+    if "sysID" in robot.name and use_torque_motor_model:
         tau_max_range: Tuple[float, float, float] = (0.0, 2.0, 1e-2)
         if "XC330" in robot.name:
             tau_max_range = (0.0, 1.0, 1e-2)
@@ -257,7 +271,7 @@ def optimize_parameters(
         }
         sim.set_joint_dynamics(joint_dyn)
 
-        if "sysID" in robot.name:
+        if "sysID" in robot.name and use_torque_motor_model:
             tau_max = trial.suggest_float(
                 "tau_max", *tau_max_range[:2], step=tau_max_range[2]
             )
@@ -271,14 +285,15 @@ def optimize_parameters(
                 dict(tau_max=tau_max, q_dot_tau_max=q_dot_tau_max, q_dot_max=q_dot_max)
             )
 
+        sim.reset()
         joint_pos_sim_list: List[npt.NDArray[np.float32]] = []
         for action, kp in zip(action_list, kp_list):
             sim.set_motor_kps(dict(zip(motor_names, [kp] * len(motor_names))))
 
             for a in action:
-                obs = sim.get_observation()
                 sim.set_motor_target(a)
                 sim.step()
+                obs = sim.get_observation()
 
                 assert obs.joint_pos is not None
                 joint_pos_sim_list.append(obs.joint_pos[joint_idx])
@@ -292,8 +307,9 @@ def optimize_parameters(
         joint_pos_sim_fft = np.fft.fft(joint_pos_sim)
         joint_pos_real_fft = np.fft.fft(joint_pos_real)
 
-        joint_pos_sim_fft_freq = np.fft.fftfreq(len(joint_pos_sim_fft), d=sim.dt)
-        joint_pos_real_fft_freq = np.fft.fftfreq(len(joint_pos_real_fft), d=sim.dt)
+        d_sample = float(sim.control_dt)
+        joint_pos_sim_fft_freq = np.fft.fftfreq(len(joint_pos_sim_fft), d=d_sample)
+        joint_pos_real_fft_freq = np.fft.fftfreq(len(joint_pos_real_fft), d=d_sample)
 
         magnitude_sim = np.abs(joint_pos_sim_fft[: len(joint_pos_sim_fft) // 2])
         magnitude_real = np.abs(joint_pos_real_fft[: len(joint_pos_real_fft) // 2])
@@ -332,8 +348,7 @@ def optimize_parameters(
         armature=float(sim.model.joint(joint_name).armature),
         frictionloss=float(sim.model.joint(joint_name).frictionloss),
     )
-    if "sysID" in robot.name:
-        assert isinstance(sim.controller, MotorController)
+    if "sysID" in robot.name and use_torque_motor_model:
         initial_trial.update(
             dict(
                 tau_max=float(sim.controller.tau_max),
@@ -499,9 +514,11 @@ def evaluate(
         joint_pos_real = np.concatenate([obs[:, joint_idx] for obs in obs_list])
 
         if sim_name == "mujoco":
-            sim = MuJoCoSim(robot, fixed_base=True)
+            sim = _mujoco_sim_for_sysid(robot)
         else:
             raise ValueError("Invalid simulator")
+
+        use_torque_motor_model = isinstance(sim.controller, MotorController)
 
         joint_dyn = {
             joint_name: {
@@ -512,7 +529,7 @@ def evaluate(
         }
         sim.set_joint_dynamics(joint_dyn)
 
-        if "sysID" in robot.name:
+        if "sysID" in robot.name and use_torque_motor_model:
             sim.set_motor_dynamics(
                 dict(
                     tau_max=opt_params_dict[joint_name]["tau_max"],
@@ -522,12 +539,13 @@ def evaluate(
             )
 
         joint_pos_sim_list: List[npt.NDArray[np.float32]] = []
+        sim.reset()
         for action, kp in zip(action_list, kp_list):
             sim.set_motor_kps(dict(zip(motor_names, [kp] * len(motor_names))))
             for a in action:
-                obs = sim.get_observation()
                 sim.set_motor_target(a)
                 sim.step()
+                obs = sim.get_observation()
 
                 assert obs.joint_pos is not None
                 joint_pos_sim_list.append(obs.joint_pos[joint_idx])

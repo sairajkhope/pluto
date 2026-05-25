@@ -4,7 +4,7 @@
   <option timestep="0.001" iterations="50" solver="Newton" tolerance="1e-10"/>
   <default>
     <default class="sysID_XC430_extended">
-      <joint damping="0.25" frictionloss="0.1" armature="0.005"/>
+      <joint damping="0.01" frictionloss="0.05" armature="0.005"/>
       <position kp="50" dampratio="1"/>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
@@ -41,7 +41,4 @@
     <position class="sysID_XC430_extended" name="joint_0" joint="joint_0" inheritrange="1"/>
   </actuator>
   <equality/>
-  <keyframe>
-    <key name="home" qpos="0" ctrl="0"/>
-  </keyframe>
 </mujoco>

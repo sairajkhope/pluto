@@ -4,7 +4,7 @@ Provides PD controllers with asymmetric saturation models for both
 Dynamixel motor control and basic position control.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 from toddlerbot.sim.robot import Robot
 from toddlerbot.utils.array_utils import ArrayType
@@ -109,17 +109,26 @@ class MotorController:
 
 
 class PositionController:
-    """A class for controlling the position of a robot's joints."""
+    """Passes position targets through to MuJoCo `ctrl` for `<position>` actuators."""
 
-    def step(self, q: ArrayType, q_dot: ArrayType, a: ArrayType):
-        """Advances the system state by one time step using the provided acceleration.
+    def step(
+        self,
+        q: ArrayType,
+        q_dot: ArrayType,
+        q_dot_dot: ArrayType,
+        a: ArrayType,
+        noise: Optional[Dict[str, ArrayType]] = None,
+    ):
+        """Return motor position targets as control inputs (must match `MotorController.step` arity).
 
         Args:
-            q (ArrayType): The current state vector of the system.
-            q_dot (ArrayType): The current velocity vector of the system.
-            a (ArrayType): The acceleration vector to be applied.
+            q: Current motor positions (unused; MuJoCo applies the actuator law).
+            q_dot: Current motor velocities (unused).
+            q_dot_dot: Current accelerations (unused; kept for API parity with `MotorController`).
+            a: Target motor positions (same ordering as `robot.motor_ordering`).
 
         Returns:
-            ArrayType: The acceleration vector `a`.
+            Control vector for MuJoCo position actuators (target positions).
         """
+        del q, q_dot, q_dot_dot, noise
         return a

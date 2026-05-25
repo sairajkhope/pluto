@@ -111,6 +111,7 @@ class MuJoCoSim(BaseSim):
                 self.model.keyframe("home").qpos, dtype=np.float32
             )
         except KeyError:
+            self.home_qpos = None
             print("No keyframe named 'home' found in the model.")
 
         if controller_type == "torque":
@@ -395,6 +396,22 @@ class MuJoCoSim(BaseSim):
 
         if self.visualizer is not None:
             self.visualizer.visualize(self.data)
+
+    def reset(self, key_name: str = "home"):
+        """Reset state and optional keyframe (required between Optuna trials so runs are independent)."""
+        mujoco.mj_resetData(self.model, self.data)
+        applied_keyframe = False
+        try:
+            kid = self.model.key(key_name).id
+            mujoco.mj_resetDataKeyframe(self.model, self.data, kid)
+            applied_keyframe = True
+        except (AttributeError, KeyError, ValueError):
+            pass
+        if not applied_keyframe and self.home_qpos is not None:
+            n = min(len(self.home_qpos), int(self.model.nq) - self.q_start_idx)
+            self.data.qpos[self.q_start_idx : self.q_start_idx + n] = self.home_qpos[:n]
+        self.target_motor_pos = np.zeros(self.model.nu, dtype=np.float32)
+        mujoco.mj_forward(self.model, self.data)
 
     def step(self):
         """Advances the simulation by a specified number of frames and updates the visualizer.
