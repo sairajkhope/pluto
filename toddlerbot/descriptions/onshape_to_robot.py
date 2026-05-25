@@ -10,10 +10,6 @@ import subprocess
 import sys
 
 ASSEMBLY_DOC_MAP = {
-    "2xc_430_palm": "565bc33af293a651f66e88d2",
-    "2xc_430_gripper": "565bc33af293a651f66e88d2",
-    "2xm_430_palm": "565bc33af293a651f66e88d2",
-    "2xm_430_gripper": "565bc33af293a651f66e88d2",
     "teleop_leader": "565bc33af293a651f66e88d2",
     "left_leg_2xc_430": "3084b13ad43394bd46cc00cf",
     "right_leg_2xc_430": "3084b13ad43394bd46cc00cf",
@@ -25,34 +21,16 @@ ASSEMBLY_DOC_MAP = {
     "right_arm_gripper": "322117012e09b07c7aec2a4a",
     "left_arm_leader": "322117012e09b07c7aec2a4a",
     "right_arm_leader": "322117012e09b07c7aec2a4a",
-    "sysID_XC330": ("01b1c8677a4515af1e42f581", None),
-    "sysID_XC430": ("01b1c8677a4515af1e42f581", "04f61327c5f24c34ceace645"),
-    "sysID_2XC430": ("01b1c8677a4515af1e42f581", None),
     "sysID_2XL430": ("01b1c8677a4515af1e42f581", None),
-    "sysID_XM430": ("01b1c8677a4515af1e42f581", None),
     "sysID_XC430_extended": ("01b1c8677a4515af1e42f581", "bf799a6c83b2e767d66c9120"),
+    "sysID_XL430": ("01b1c8677a4515af1e42f581", "bf799a6c83b2e767d66c9120"),
 }
 
 ROBOT_CONFIGS = {
-    "toddlerbot_2xc": {"body": "2xc_430_palm", "arm": "palm", "leg": "2xc_430"},
-    "toddlerbot_2xc_gripper": {
-        "body": "2xc_430_gripper",
-        "arm": "gripper",
-        "leg": "2xc_430",
-    },
-    "toddlerbot_2xm": {"body": "2xm_430_palm", "arm": "palm", "leg": "2xm_430"},
-    "toddlerbot_2xm_gripper": {
-        "body": "2xm_430_gripper",
-        "arm": "gripper",
-        "leg": "2xm_430",
-    },
     "teleop_leader": {"body": "teleop_leader", "arm": "leader"},
-    "sysID_XC330": {"body": "sysID_XC330"},
-    "sysID_XC430": {"body": "sysID_XC430"},
-    "sysID_2XC430": {"body": "sysID_2XC430"},
     "sysID_2XL430": {"body": "sysID_2XL430"},
-    "sysID_XM430": {"body": "sysID_XM430"},
     "sysID_XC430_extended": {"body": "sysID_XC430_extended"},
+    "sysID_XL430": {"body": "sysID_XL430"},
 }
 
 
