@@ -20,6 +20,7 @@ else:
 
 from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.robot import Robot
+from toddlerbot.utils.device_registry import KIND_DYNAMIXEL_BUS, find_device_path
 
 
 class RealWorld(BaseSim):
@@ -56,10 +57,10 @@ class RealWorld(BaseSim):
 
         self.controllers = []
         try:
-            # On Mac, need full path; on Linux, just device name
-            port_name = "/dev/tty.usbserial-FTAK8D39" if platform.system() == "Darwin" else "ttyUSB0"
+            port_name = find_device_path(robot.name, KIND_DYNAMIXEL_BUS)
             self.controllers = dynamixel_cpp.create_controllers(
                 port_name,
+                robot.motor_ids,
                 robot.motor_kp_real,
                 robot.motor_kd_real,
                 robot.motor_zero_pos,
@@ -68,15 +69,12 @@ class RealWorld(BaseSim):
                 1,
             )
             dynamixel_cpp.initialize(self.controllers)
-            self.motor_ids = dynamixel_cpp.get_motor_ids(self.controllers)
-            motor_ids_flat = np.array(
-                sum((self.motor_ids[key] for key in sorted(self.motor_ids)), [])
-            )
+            # For Python wrapper, motors are in a single controller
+            self.motor_ids = {"default": robot.motor_ids}
+            motor_ids_flat = np.array(robot.motor_ids)
             self.motor_sort_idx = np.argsort(motor_ids_flat)
             self.motor_unsort_idx = motor_ids_flat
-            self.motor_lens = [
-                len(self.motor_ids[key]) for key in sorted(self.motor_ids)
-            ]
+            self.motor_lens = [len(robot.motor_ids)]
 
         except Exception as e:
             print(f"Dynamixel controller not found: {e}")
@@ -138,27 +136,12 @@ class RealWorld(BaseSim):
         Returns:
             An observation object containing processed sensor data, including motor states and, if available, IMU angular velocity and Euler angles.
         """
-        motor_state = dynamixel_cpp.get_motor_states(self.controllers, 0)
+        motor_state = dynamixel_cpp.get_obs(self.controllers, retries)
 
-        all_motor_pos = []
-        all_motor_vel = []
-        all_motor_cur = []
-
-        for key in sorted(self.motor_ids.keys()):
-            data = motor_state[key]
-            pos = data["pos"]
-            vel = data["vel"]
-            cur = data["cur"]
-
-            # Append all ids and corresponding data
-            all_motor_pos.extend(pos)
-            all_motor_vel.extend(vel)
-            all_motor_cur.extend(cur)
-
-        # Convert to numpy arrays
-        motor_pos = np.array(all_motor_pos, dtype=np.float32)[self.motor_sort_idx]
-        motor_vel = np.array(all_motor_vel, dtype=np.float32)[self.motor_sort_idx]
-        motor_cur = np.array(all_motor_cur, dtype=np.float32)[self.motor_sort_idx]
+        # get_obs returns arrays directly, not a dict of dicts
+        motor_pos = motor_state["pos"][self.motor_sort_idx]
+        motor_vel = motor_state["vel"][self.motor_sort_idx]
+        motor_cur = motor_state["cur"][self.motor_sort_idx]
         motor_tor = self.motor_cur_to_tor(motor_cur, motor_vel)
 
         # Get the IMU data (optional)
@@ -193,9 +176,8 @@ class RealWorld(BaseSim):
             motor_pos = np.array(motor_angles, dtype=np.float32)
 
         reordered_pos = motor_pos[self.motor_unsort_idx]
-        splits = np.split(reordered_pos, np.cumsum(self.motor_lens)[:-1])
-        pos_vecs = [x.tolist() for x in splits]
-        dynamixel_cpp.set_motor_pos(self.controllers, pos_vecs)
+        # For single controller, just pass the positions directly
+        dynamixel_cpp.set_goal_pos(self.controllers, reordered_pos)
 
     def set_motor_kps(self, motor_kps: Dict[str, float]):
         """Sets the proportional gain (Kp) values for motors of type 'dynamixel'.
@@ -210,11 +192,9 @@ class RealWorld(BaseSim):
             if k in motor_kps:
                 dynamixel_kps[i] = motor_kps[k]
 
-        # Reorder and split gains for each controller
-        reordered_kps = dynamixel_kps[self.motor_unsort_idx]
-        splits = np.split(reordered_kps, np.cumsum(self.motor_lens)[:-1])
-        kp_vecs = [x.tolist() for x in splits]
-        dynamixel_cpp.set_motor_kps(self.controllers, kp_vecs)
+        # TODO: Python wrapper doesn't support dynamic Kp changes yet
+        # For now, Kp values are set during controller initialization
+        print("Warning: set_motor_kps not implemented in Python wrapper")
 
     def close(self):
         """Closes all active components.

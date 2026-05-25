@@ -72,7 +72,7 @@ class TeleopVRLeaderPolicy(BasePolicy):
 
         self.fsr = None
         try:
-            self.fsr = FSR()
+            self.fsr = FSR(robot.name)
         except Exception as e:
             print(e)
 

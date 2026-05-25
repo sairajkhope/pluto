@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import platform
 from typing import List
 
 import numpy as np
@@ -10,6 +9,7 @@ import yaml
 
 from toddlerbot.actuation import dynamixel_controller as dynamixel_cpp
 from toddlerbot.sim.robot import Robot
+from toddlerbot.utils.device_registry import KIND_DYNAMIXEL_BUS, find_device_path
 
 # This script is used to calibrate the zero points of the Dynamixel motors.
 
@@ -40,9 +40,8 @@ def main(robot: Robot, parts: List[str]):
 
         print("Please answer 'yes' or 'no'.")
 
-    # On Mac, need full path; on Linux, just device name
-    port_name = "/dev/tty.usbserial-FTAK8D39" if platform.system() == "Darwin" else "ttyUSB0"
-    
+    port_name = find_device_path(robot.name, KIND_DYNAMIXEL_BUS)
+
     controllers = dynamixel_cpp.create_controllers(
         port_name,
         robot.motor_kp_real,

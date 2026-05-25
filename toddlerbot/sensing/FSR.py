@@ -4,38 +4,32 @@ Provides FSR class for reading pressure sensor data from the robot's feet
 via serial communication for balance and gait control.
 """
 
-import platform
-
 import numpy as np
 import serial
 
-from toddlerbot.utils.io_utils import find_ports
+from toddlerbot.utils.device_registry import KIND_FSR_BOARD, find_device_path
 
 
 class FSR:
     """A class for interfacing with the FSR sensors on the robot."""
 
-    def __init__(self, baud_rate=115200):
-        """Initializes the FSR interface with a specified baud rate for serial communication.
+    def __init__(self, robot_name: str, baud_rate: int = 115200):
+        """Initializes the FSR interface for a given robot.
 
         Args:
-            baud_rate (int, optional): The baud rate for the serial connection. Defaults to 115200.
+            robot_name (str): Robot identifier, used to look up the FSR board's
+                USB VID/PID/serial_number in the per-robot device registry.
+            baud_rate (int, optional): Serial baud rate. Defaults to 115200.
 
-        Reads the most recent FSR values from the serial port, which are percentages ranging from 0 to 100. Returns (0, 0) if no valid data is available and retries up to two times if an error occurs.
+        Raises:
+            ConnectionError: If the registered FSR board is not currently
+                connected.
+            KeyError: If no FSR board has been registered for this robot.
+                Run `python -m toddlerbot.tools.setup_devices --robot <name>`.
         """
-        os_type = platform.system()
-        if os_type == "Linux":
-            description = "/dev/ttyACM*"
-        elif os_type == "Windows":
-            description = "USB Serial Device"
-
-        fsr_ports = find_ports(description)
-
-        # Configure the serial connection
-        self.serial_port = fsr_ports[0]
+        self.serial_port = find_device_path(robot_name, KIND_FSR_BOARD)
         self.baud_rate = baud_rate
 
-        # Open the serial port
         try:
             self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             print(f"Connected to {self.serial_port} at {self.baud_rate} baud.")
