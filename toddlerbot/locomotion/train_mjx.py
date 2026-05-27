@@ -21,7 +21,7 @@ import shutil
 import sys
 import time
 import warnings
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import gin
 import jax
@@ -208,14 +208,16 @@ def load_jax_ckpt_to_torch(jax_params):
 
 def render_video(
     env: MJXEnv,
-    states: List[Any],
+    states: list[Any],
     video_dir: str,
     video_name: str,
-    cameras: List[str] = ["perspective"],
+    cameras: list[str] | None = None,
     render_every: int = 2,
     height: int = 360,
     width: int = 640,
 ):
+    if cameras is None:
+        cameras = ["perspective"]
     """Renders and saves a video of the environment from multiple camera angles.
 
     Args:
@@ -261,7 +263,7 @@ def render_video(
         final_video = camera_clips[0]
 
     command_to_render = [
-        states[i].info["command"] for i in range(0, len(states), render_every)
+        states[i].info["command_obs"] for i in range(0, len(states), render_every)
     ]
     name_to_render = [
         support.id2name(env.sys, mujoco.mjtObj.mjOBJ_BODY, states[i].info["push_id"])
@@ -304,7 +306,7 @@ def render_video(
             push_curr = push_to_render[i]
 
         command_str = (
-            f"Command: [{', '.join(f'{x:.2f}' for x in command_to_render[i][5:])}]"
+            f"Command: [{', '.join(f'{x:.2f}' for x in command_to_render[i])}]"
         )
         push_str = (
             f"\nPush: [{', '.join(f'{x:.2f}' for x in push_curr)}] at {name_curr}"
@@ -323,7 +325,7 @@ def render_video(
 
 
 def print_metrics(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     time_elapsed: float,
     num_steps: int,
     num_total_steps: int,
@@ -382,7 +384,7 @@ def print_metrics(
     print(log_string)
 
 
-def log_metrics(metrics: Dict[str, Any], num_steps: int, defined_metrics: List[str]):
+def log_metrics(metrics: dict[str, Any], num_steps: int, defined_metrics: list[str]):
     """Process and log training metrics to Weights & Biases."""
     grouped_log_data = {"env_step": num_steps}
     for key, value in metrics.items():
@@ -415,9 +417,9 @@ def log_metrics(metrics: Dict[str, Any], num_steps: int, defined_metrics: List[s
 
 def get_body_mass_attr_range(
     robot: Robot,
-    body_mass_range: List[float],
-    hand_mass_range: List[float],
-    other_mass_range: List[float],
+    body_mass_range: list[float],
+    hand_mass_range: list[float],
+    other_mass_range: list[float],
     num_envs: int,
 ):
     """Generates a range of body mass attributes for a robot across multiple environments.
@@ -468,7 +470,7 @@ def get_body_mass_attr_range(
     dof_invweight0_list = []
     tendon_invweight0_list = []
     for body_mass_delta, hand_mass_delta, other_mass_delta in zip(
-        body_mass_delta_list, hand_mass_delta_list, other_mass_delta_list
+        body_mass_delta_list, hand_mass_delta_list, other_mass_delta_list, strict=False
     ):
         # Update body mass and inertia in the model
         for i in range(model.nbody):
@@ -502,7 +504,7 @@ def get_body_mass_attr_range(
         tendon_invweight0_list.append(jnp.array(model.tendon_invweight0))
 
     # Return a dictionary where each key has a JAX array of all values across environments
-    body_mass_attr_range: Dict[str, jax.Array | npt.NDArray[np.float32]] = {
+    body_mass_attr_range: dict[str, jax.Array | npt.NDArray[np.float32]] = {
         "body_mass": jnp.stack(body_mass_list),
         "body_inertia": jnp.stack(body_inertia_list),
         "actuator_acc0": jnp.stack(actuator_acc0_list),
@@ -519,12 +521,12 @@ def get_body_mass_attr_range(
 def domain_randomize(
     sys: base.System,
     rng: jax.Array,
-    friction_range: List[float],
-    damping_range: List[float],
-    armature_range: List[float],
-    frictionloss_range: List[float],
-    body_mass_attr_range: Optional[Dict[str, jax.Array | npt.NDArray[np.float32]]],
-) -> Tuple[base.System, base.System]:
+    friction_range: list[float],
+    damping_range: list[float],
+    armature_range: list[float],
+    frictionloss_range: list[float],
+    body_mass_attr_range: dict[str, jax.Array | npt.NDArray[np.float32]] | None,
+) -> tuple[base.System, base.System]:
     """Randomizes the physical parameters of a system within specified ranges.
 
     Args:
@@ -549,8 +551,9 @@ def domain_randomize(
         friction = jax.random.uniform(
             rng_friction, minval=friction_range[0], maxval=friction_range[1]
         )
-        # Two feet and two hands with the floor
-        pair_friction = sys.pair_friction.at[:4, :2].set(friction)
+
+        # Set friction across all contact pairs
+        pair_friction = sys.pair_friction.at[:, :2].set(friction)
 
         nv = sys.nv - 6
 
@@ -602,7 +605,7 @@ def domain_randomize(
         "dof_damping": 0,
         "dof_armature": 0,
         "dof_frictionloss": 0,
-        **{key: 0 for key in body_mass_attr.keys()},
+        **dict.fromkeys(body_mass_attr.keys(), 0),
     }
     in_axes = in_axes.tree_replace(in_axes_dict)
 
@@ -621,7 +624,7 @@ def domain_randomize(
 def load_runner_config(train_cfg: PPOConfig):
     """Load and configure RSL-RL runner settings from PPO configuration."""
     config_path = os.path.join("toddlerbot", "locomotion", "rsl_rl_config.yml")
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
 
         config["wandb_project"] = train_cfg.wandb_project
@@ -789,12 +792,18 @@ def train(
             sync_tensorboard=True,
             name=run_name,
             notes=notes,
-            config={"args": args_dict, "train": train_config_dict, "env": env_config_dict},
+            config={
+                "args": args_dict,
+                "train": train_config_dict,
+                "env": env_config_dict,
+            },
         )
         wandb.define_metric("env_step")
         defined_metrics = ["env_step"]
     except Exception as e:
-        print(f"Error with wandb: {e}. \n\nUpdate locomotion/ppo_config.py, wandb_entity with your wandb username, and wandb_project with your project name.")
+        print(
+            f"Error with wandb: {e}. \n\nUpdate locomotion/ppo_config.py, wandb_entity with your wandb username, and wandb_project with your project name."
+        )
         defined_metrics = None
 
     domain_randomize_fn = None
@@ -840,7 +849,7 @@ def train(
     best_ckpt_step = 0
     best_episode_reward = -float("inf")
 
-    def progress_fn(num_steps: int, metrics: Dict[str, Any]):
+    def progress_fn(num_steps: int, metrics: dict[str, Any]):
         nonlocal defined_metrics, best_episode_reward, best_ckpt_step, last_ckpt_step
         is_episode = any("episode" in k for k in metrics)
         times.append(time.monotonic())
@@ -869,7 +878,8 @@ def train(
                         metrics["loss/total"] = metrics.pop(key)
 
         # Log metrics to wandb
-        if defined_metrics is not None: log_metrics(metrics, num_steps, defined_metrics)
+        if defined_metrics is not None:
+            log_metrics(metrics, num_steps, defined_metrics)
 
     render_interval = train_cfg.num_timesteps // train_cfg.render_nums
     last_render_step = 0
@@ -923,7 +933,7 @@ def train(
             init_state_dir = os.path.join(exp_folder_path, "init_states")
             os.makedirs(init_state_dir, exist_ok=True)
             for i in tqdm(
-                range(0, train_cfg.num_envs, train_cfg.num_envs // 20),
+                range(0, train_cfg.num_envs, max(1, train_cfg.num_envs // 20)),
                 desc="Rendering initial states",
             ):
                 d = mujoco.MjData(env.sys.mj_model)
@@ -1104,7 +1114,7 @@ def evaluate(
     jit_step = jax.jit(env.step)
     inference_fn = runner.get_inference_policy(device=device)
     # initialize the state
-    for seed in [0, 1, 2, 3]:
+    for seed in range(args.n_eval):
         rng = jax.random.PRNGKey(seed)
         states = rollout(jit_reset, jit_step, inference_fn, train_cfg, True, False, rng)
         video_name = f"eval_{seed}"
@@ -1149,6 +1159,12 @@ def main(args=None):
         type=str,
         default="",
         help="Provide the time string of the run to evaluate.",
+    )
+    parser.add_argument(
+        "--n_eval",
+        type=int,
+        default=1,
+        help="Number of evaluation runs.",
     )
     parser.add_argument(
         "--restore",
@@ -1237,6 +1253,12 @@ def main(args=None):
         add_domain_rand=env_cfg.domain_rand.add_domain_rand,
         **kwargs,  # type: ignore
     )
+
+    if hasattr(env, "episode_length"):
+        # This value is calculated in the motion reference class based on the original motion's length and the specified SimConfig.playback_speed.
+        # If the environment has a playback speed setting, no need to set train_cfg.episode_length in a gin file as it will be overwritten anyway.
+        train_cfg.episode_length = env.episode_length
+
     eval_env = EnvClass(
         args.env,
         robot,

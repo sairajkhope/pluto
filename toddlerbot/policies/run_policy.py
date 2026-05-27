@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Type
 
 import joblib
 import matplotlib.pyplot as plt
+import mujoco
 import numpy as np
 import numpy.typing as npt
 from tqdm import tqdm
@@ -22,6 +23,7 @@ from toddlerbot.policies import BasePolicy
 from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.mujoco_sim import MuJoCoSim
 from toddlerbot.sim.robot import Robot
+from toddlerbot.sim.terrain.generate_terrain import create_terrain_spec
 from toddlerbot.utils.comm_utils import ZMQNode, sync_time
 from toddlerbot.utils.misc_utils import dump_profiling_data  # , profile
 from toddlerbot.visualization.vis_plot import (
@@ -489,6 +491,12 @@ def main(args=None):
     parser.add_argument(
         "--ip", type=str, default="", help="The ip address of the follower."
     )
+    parser.add_argument(
+        "--init_from_ref",
+        action="store_true",
+        default=False,
+        help="Initialize robot qpos from the policy's reference motion first frame.",
+    )
     parser.add_argument("--task", type=str, default="", help="The name of the task.")
     parser.add_argument(
         "--plot", action="store_true", default=False, help="Skip the plot functions."
@@ -515,9 +523,104 @@ def main(args=None):
 
     robot = Robot(args.robot)
 
+    PolicyClass = get_policy_class(args.policy.replace("_fixed", ""))
+    temp_init_motor_pos = np.zeros(robot.nu)  # Temporary value
+    if len(args.path) > 0:
+        # Create PolicyClass to load env_config.json
+        policy_for_cfg = PolicyClass(
+            name=args.policy,
+            robot=robot,
+            init_motor_pos=temp_init_motor_pos,
+            path=args.path,
+        )
+    else:
+        # No env_config.json to parse
+        policy_for_cfg = None
+
     sim: BaseSim | None = None
     if args.sim == "mujoco":
-        sim = MuJoCoSim(robot, vis_type=args.vis, fixed_base="fixed" in args.policy)
+        xml_path = ""
+        model = None
+
+        if hasattr(policy_for_cfg, "env_cfg") and policy_for_cfg.env_cfg:
+            print("Generating terrain from policy's env_config.json...")
+            env_cfg_to_use = policy_for_cfg.env_cfg
+        else:
+            print(
+                "Warning: --terrain_from_config was set, but no config found. Using default."
+            )
+            env_cfg_to_use = {
+                "terrain": {
+                    "manual_map": [["flat"]],  # Use this for default scene
+                    # "manual_map": [["testbed"]],
+                    "tile_width": 4.0,
+                    "tile_length": 4.0,
+                    "resolution_per_meter": 16,
+                    "scene": "",  # e.g., "scene_climb_up_box"
+                }
+            }
+
+        # --- Environment Generation Logic ---
+        terrain_cfg = env_cfg_to_use.get("terrain", {})
+        scene_name = terrain_cfg.get("scene") if terrain_cfg else None
+        print(f"Scene name: {scene_name}")
+
+        if scene_name:
+            # Remove '_mjx' from scene name for MuJoCo compatibility
+            mujoco_scene_name = scene_name.replace("_mjx", "")
+            print(f"Loading scene: {mujoco_scene_name} (from config: {scene_name})")
+            xml_path = os.path.join(
+                "toddlerbot", "descriptions", robot.name, mujoco_scene_name + ".xml"
+            )
+        elif terrain_cfg:
+            print(f"Generating terrain: {terrain_cfg.get('manual_map', 'N/A')}")
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            robot_path = os.path.join(
+                this_dir, f"../descriptions/{args.robot}/{args.robot}.xml"
+            )
+            spec, _, _, _, _ = create_terrain_spec(
+                tile_width=terrain_cfg.get("tile_width", 4.0),
+                tile_length=terrain_cfg.get("tile_length", 4.0),
+                pixels_per_meter=terrain_cfg.get("resolution_per_meter", 16),
+                terrain_map=terrain_cfg.get("manual_map", [["flat"]]),
+                robot_xml_path=robot_path,
+            )
+            spec.worldbody.add_camera(
+                name="perspective",
+                pos=[0.7, -0.7, 0.7],
+                xyaxes=[1, 1, 0, -1, 1, 3],
+                mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM,
+            )
+            spec.worldbody.add_camera(
+                name="side",
+                pos=[0, -1, 0.6],
+                xyaxes=[1, 0, 0, 0, 1, 3],
+                mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM,
+            )
+            spec.worldbody.add_camera(
+                name="top",
+                pos=[0, 0, 1],
+                xyaxes=[0, 1, 0, -1, 0, 0],
+                mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM,
+            )
+            spec.worldbody.add_camera(
+                name="front",
+                pos=[1, 0, 0.6],
+                xyaxes=[0, 1, 0, -1, 0, 3],
+                mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM,
+            )
+            # TODO: Use safe_spawn to spawn the robot in the terrain. As of now it just spanws at (0.0, 0.0, 0.315053).
+            model = spec.compile()
+
+        sim = MuJoCoSim(
+            robot,
+            vis_type=args.vis,
+            fixed_base="fixed" in args.policy,
+            xml_path=xml_path,
+            model=model,
+        )
+
+        # Get initial motor position
         init_motor_pos = sim.get_observation().motor_pos
 
     elif args.sim == "real":
@@ -528,8 +631,6 @@ def main(args=None):
 
     else:
         raise ValueError("Unknown simulator")
-
-    PolicyClass = get_policy_class(args.policy.replace("_fixed", ""))
 
     kwargs = {
         "name": args.policy,
@@ -549,6 +650,58 @@ def main(args=None):
 
     # Create policy
     policy = PolicyClass(**kwargs)
+
+    # Initialize robot from reference motion if flag is set
+    if args.init_from_ref and hasattr(policy, "motion_ref"):
+        print(f"Initializing robot from {args.policy} policy's reference motion")
+
+        # Extract first frame data from policy's motion reference
+        first_frame_qpos = policy.motion_ref.motion_ref["qpos"][0]
+        # Use action from motion file if available, otherwise extract motor positions from qpos
+        if policy.motion_ref.motion_ref.get("action") is not None:
+            first_frame_action = policy.motion_ref.motion_ref["action"][0]
+        else:
+            # Extract motor positions from qpos using the motion_ref's indices
+            q_start_idx = policy.motion_ref.q_start_idx
+            motor_indices = policy.motion_ref.mj_motor_indices
+            first_frame_action = first_frame_qpos[q_start_idx + motor_indices]
+
+        print(
+            f"  Position: [{first_frame_qpos[0]:.3f}, {first_frame_qpos[1]:.3f}, {first_frame_qpos[2]:.3f}]"
+        )
+
+        # Set robot to reference pose and zero velocities
+        sim.set_qpos(first_frame_qpos)
+        sim.data.qvel[:] = 0.0
+        sim.set_motor_target(first_frame_action)
+
+        # Update policy's motor references to prevent prep transition
+        policy.init_motor_pos = first_frame_action.copy()
+        if hasattr(policy, "ref_motor_pos"):
+            policy.ref_motor_pos = first_frame_action.copy()
+
+        # CRITICAL: Skip prep phase entirely by setting duration to 0
+        if hasattr(policy, "prep_duration"):
+            policy.prep_duration = 0.0  # No prep phase needed - already at target
+        if hasattr(policy, "is_prepared"):
+            policy.is_prepared = True  # Mark as prepared
+        # Set time_start to 0 since we're skipping prep phase
+        policy.time_start = 0.0
+
+        # Settle physics and hold pose briefly
+        for _ in range(10):
+            mujoco.mj_forward(sim.model, sim.data)
+
+        freeze_steps = int(1.0 / policy.control_dt)
+        print("  Holding reference pose for 1.0s")
+        for step in range(freeze_steps):
+            sim.data.qvel[:] = 0.0
+            sim.set_motor_target(first_frame_action)
+            sim.step()
+            if args.vis == "view":
+                time.sleep(policy.control_dt)
+
+        print("  ✓ Reference pose initialization complete")
 
     run_policy(sim, robot, policy, args.vis, args.plot, args.record, args.note)
 

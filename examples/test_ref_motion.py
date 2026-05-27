@@ -1,6 +1,6 @@
 """Test motion reference systems in MuJoCo simulation.
 
-This module tests various motion reference systems (walking, crawling, cartwheel)
+This module tests various motion reference systems (walking, cartwheel, get_up)
 with optional joystick control for interactive testing.
 """
 
@@ -13,7 +13,8 @@ from tqdm import tqdm
 
 from toddlerbot.locomotion.mjx_env import get_env_config
 from toddlerbot.reference.cartwheel_ref import CartwheelReference
-from toddlerbot.reference.crawl_ref import CrawlReference
+from toddlerbot.reference.get_up_prone_ref import GetUpProneReference
+from toddlerbot.reference.get_up_roll_ref import GetUpRollReference
 from toddlerbot.reference.motion_ref import MotionReference
 from toddlerbot.reference.walk_zmp_ref import WalkZMPReference
 from toddlerbot.sim.mujoco_sim import MuJoCoSim
@@ -43,6 +44,7 @@ def test_ref_motion(
 
     max_steps = motion_ref.n_frames if hasattr(motion_ref, "n_frames") else 3000
     p_bar = tqdm(total=max_steps, desc="Running the test")
+    last_command = None
 
     contact_pairs = []
     try:
@@ -83,6 +85,14 @@ def test_ref_motion(
                             [-1, 0, 1],
                             [command_range[axis][1], 0.0, command_range[axis][0]],
                         )
+            elif "get_up" in motion_ref.name:
+                if last_command is None:
+                    command = np.random.randint(
+                        0, len(motion_ref.get_up_mode_list), (1,)
+                    )
+                    last_command = command
+                else:
+                    command = last_command
 
             # print(f"Command: {command}")
             time_curr = step_idx * sim.control_dt
@@ -186,19 +196,26 @@ if __name__ == "__main__":
             walk_cfg.sim.timestep * walk_cfg.action.n_frames,
             walk_cfg.action.cycle_time,
         )
-    elif "crawl" in args.ref:
-        crawl_cfg, _ = get_env_config("crawl")
-        command_range = crawl_cfg.commands.command_range
-
-        motion_ref = CrawlReference(
-            robot, crawl_cfg.sim.timestep * crawl_cfg.action.n_frames
-        )
     elif "cartwheel" in args.ref:
         cartwheel_cfg, _ = get_env_config("cartwheel")
         command_range = cartwheel_cfg.commands.command_range
 
         motion_ref = CartwheelReference(
             robot, cartwheel_cfg.sim.timestep * cartwheel_cfg.action.n_frames
+        )
+    elif "get_up_prone" in args.ref:
+        get_up_prone_cfg, _ = get_env_config("get_up_prone")
+        command_range = get_up_prone_cfg.commands.command_range
+
+        motion_ref = GetUpProneReference(
+            robot, get_up_prone_cfg.sim.timestep * get_up_prone_cfg.action.n_frames
+        )
+    elif "get_up_roll" in args.ref:
+        get_up_roll_cfg, _ = get_env_config("get_up_roll")
+        command_range = get_up_roll_cfg.commands.command_range
+
+        motion_ref = GetUpRollReference(
+            robot, get_up_roll_cfg.sim.timestep * get_up_roll_cfg.action.n_frames
         )
     else:
         raise ValueError("Unknown ref motion")

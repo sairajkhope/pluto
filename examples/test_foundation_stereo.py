@@ -5,13 +5,13 @@ neural network model. It processes stereo camera images to produce depth maps an
 """
 
 import argparse
+import json
 import os
 import statistics
 import time
 import traceback
 
 import cv2
-import matplotlib
 import numpy as np
 import open3d as o3d
 
@@ -19,13 +19,13 @@ from toddlerbot.depth.depth_estimator_foundation_stereo import (
     DepthEstimatorFoundationStereo,
 )
 from toddlerbot.depth.depth_utils import vis_disparity
+from toddlerbot.sensing.camera import Camera
+from toddlerbot.sim.terrain.get_depth import process_depth_map
 from toddlerbot.utils.misc_utils import dump_profiling_data, profile
 
 # Constants
 DEBUG_IMAGES_FOLDER = os.path.join("results", "depth_blake_debug")
-DEFAULT_OUTDIR = os.path.join(
-    "results", f"test_foundation_stereo_{time.strftime('%Y%m%d_%H%M%S')}"
-)
+TIMESTAMP = time.strftime("%Y%m%d_%H%M%S")
 CALIB_PARAMS_PATH = os.path.join("toddlerbot", "depth", "params", "calibration.pkl")
 DEFAULT_CALIB_HEIGHT = 480
 DEFAULT_CALIB_WIDTH = 640
@@ -34,11 +34,50 @@ ENGINE_PATH = os.path.join(
     "toddlerbot",
     "depth",
     "models",
-    "foundation_stereo_vits_96x128_16.engine",
+    "foundation_stereo_vitl_192x256_16.engine",
+    # "foundation_stereo_vitl_480x640_20.engine",
 )
 
 # Number of warm-up iterations to ignore for FPS calculation
 NUM_WARM_UP = 10
+
+
+def save_run_info(args, outdir, loop_times=None):
+    """Save the parser arguments, timestamp, and performance metrics to a JSON file"""
+    # Convert args to dictionary, handling non-serializable types
+    args_dict = {}
+    for key, value in vars(args).items():
+        if isinstance(value, (str, int, float, bool, list)) or value is None:
+            args_dict[key] = value
+        else:
+            args_dict[key] = str(value)
+
+    # Create run info dictionary
+    run_info = {
+        "timestamp": TIMESTAMP,
+        "run_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "arguments": args_dict,
+        "script_name": "test_foundation_stereo.py",
+    }
+
+    # Add performance metrics if loop times are provided
+    if loop_times and len(loop_times) > 1:
+        run_info["performance"] = {
+            "num_frames": len(loop_times),
+            "avg_loop_time_ms": round(statistics.mean(loop_times), 2),
+            "std_loop_time_ms": round(statistics.stdev(loop_times), 2)
+            if len(loop_times) > 1
+            else 0.0,
+            "min_loop_time_ms": round(min(loop_times), 2),
+            "max_loop_time_ms": round(max(loop_times), 2),
+        }
+
+    # Save to JSON file
+    info_file = os.path.join(outdir, "run_info.json")
+    with open(info_file, "w") as f:
+        json.dump(run_info, f, indent=2)
+
+    print(f"Run info saved to: {info_file}")
 
 
 def parse_args():
@@ -47,13 +86,7 @@ def parse_args():
         description="Depth Foundation Stereo Metric Depth Estimation"
     )
     parser.add_argument("--vis", dest="vis", action="store_true", help="visualize")
-    parser.add_argument("--outdir", type=str, default=DEFAULT_OUTDIR)
-    parser.add_argument(
-        "--skip-rectify",
-        dest="skip_rectify",
-        action="store_true",
-        help="skip rectification",
-    )
+    parser.add_argument("--outdir", type=str, default=None)
     parser.add_argument(
         "--save-output",
         dest="save_output",
@@ -100,7 +133,7 @@ def parse_args():
     )
     parser.add_argument(
         "--zmax",
-        default=20,
+        default=1,
         type=float,
         help="max depth (meters) to clip in point cloud",
     )
@@ -135,7 +168,11 @@ def parse_args():
         help="radius to use for outlier removal",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.outdir is None:
+        engine_name = os.path.basename(args.engine)
+        args.outdir = os.path.join("results", f"{engine_name}_{TIMESTAMP}")
+    return args
 
 
 @profile()
@@ -147,11 +184,16 @@ def main(args):
         engine_path=args.engine,
         calib_width=args.calib_width,
         calib_height=args.calib_height,
-        skip_rectify=args.skip_rectify,
-        debug=args.debug is not None,
     )
-    os.makedirs(args.outdir, exist_ok=True)
-    cmap = matplotlib.colormaps.get_cmap("Spectral")
+
+    # Initialize cameras if not in debug mode
+    if args.debug is None:
+        camera_left = Camera("left", width=args.calib_width, height=args.calib_height)
+        camera_right = Camera("right", width=args.calib_width, height=args.calib_height)
+
+    # Only create output directory if we're actually saving output
+    if args.save_output:
+        os.makedirs(args.outdir, exist_ok=True)
 
     i = 0
     keep_running = True
@@ -163,8 +205,7 @@ def main(args):
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
-            # Original image
-            debug_images = None
+            # Get images from cameras or debug folder
             if args.debug is not None:
                 # Load images from debug folder
                 img_left_path = os.path.join(args.debug, f"{i}_original_left.jpg")
@@ -175,13 +216,17 @@ def main(args):
                 ):
                     print(f"Image not found: {img_left_path} or {img_right_path}")
                     break
-                image_left = cv2.imread(img_left_path)
-                image_right = cv2.imread(img_right_path)
-                debug_images = (image_left, image_right)
+                img_left = cv2.imread(img_left_path)
+                img_right = cv2.imread(img_right_path)
+            else:
+                # Capture from cameras
+                img_left = camera_left.get_frame()
+                img_right = camera_right.get_frame()
 
             depth_result = depth_estimator.get_depth(
+                img_left,
+                img_right,
                 remove_invisible=args.remove_invisible,
-                debug_images=debug_images,
                 return_all=True,  # return all images for visualization
             )
 
@@ -195,13 +240,14 @@ def main(args):
             assert depth_result.depth is not None
 
             # Show original image and depth map side by side
+            processed_depth = process_depth_map(depth_result.depth)
             depth_vis = vis_disparity(
-                depth_result.depth,
+                processed_depth,
                 min_val=0,
                 max_val=args.zmax,
                 invalid_upper_thres=args.zmax,
                 invalid_bottom_thres=0.0,
-                cmap=cmap,
+                no_color=True,
             )
             disp_vis = vis_disparity(depth_result.disparity)
             combined_frame = np.hstack(
@@ -290,11 +336,16 @@ def main(args):
     finally:
         # Cleanup
         print("Exiting...")
+        if args.debug is None:
+            camera_left.close()
+            camera_right.close()
         if loop_times:
             print(f"Average loop time: {statistics.mean(loop_times):.2f}ms")
             print(f"Std loop time: {statistics.stdev(loop_times):.2f}ms")
-        profile_path = os.path.join(args.outdir, "profile_output.lprof")
-        dump_profiling_data(profile_path)
+        if args.save_output:
+            save_run_info(args, args.outdir, loop_times)
+            profile_path = os.path.join(args.outdir, "profile_output.lprof")
+            dump_profiling_data(profile_path)
 
 
 if __name__ == "__main__":

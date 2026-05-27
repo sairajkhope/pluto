@@ -14,6 +14,7 @@ import board
 import busio
 import numpy as np
 from adafruit_bno08x import (
+    BNO_REPORT_GAME_ROTATION_VECTOR,
     # BNO_REPORT_GRAVITY,
     BNO_REPORT_GYROSCOPE,
     # BNO_REPORT_LINEAR_ACCELERATION,
@@ -72,7 +73,12 @@ def set_report_interval(report_interval: int = 5000):
 class IMU:
     """Class for interfacing with the BNO08X IMU sensor."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        address: int = 0x4A,
+        offset: float = -np.pi / 2,
+        use_game_rotation: bool = True,
+    ):
         """Initializes the sensor interface.
 
         Args:
@@ -82,19 +88,23 @@ class IMU:
 
         # Initialize the I2C bus and sensor
         self.i2c = busio.I2C(board.SCL, board.SDA)
-        self.sensor = BNO08X_I2C(self.i2c)
+        self.sensor = BNO08X_I2C(self.i2c, address=address)
+        self.use_game_rotation = use_game_rotation
 
         # Enable the gyroscope and rotation vector features
         # self.sensor.enable_feature(BNO_REPORT_GRAVITY)
         self.sensor.enable_feature(BNO_REPORT_GYROSCOPE)
         # self.sensor.enable_feature(BNO_REPORT_LINEAR_ACCELERATION)
-        self.sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+        if use_game_rotation:
+            self.sensor.enable_feature(BNO_REPORT_GAME_ROTATION_VECTOR)
+        else:
+            self.sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR)
 
         time.sleep(0.2)
 
         self.is_open = True
         self.zero_yaw = None
-        zero_euler = np.array([0, -np.pi / 2, 0], dtype=np.float32)
+        zero_euler = np.array([0, float(offset), 0], dtype=np.float32)
         self.zero_rot = R.from_euler("xyz", zero_euler)
         self.zero_rot_inv = self.zero_rot.inv()
 
@@ -112,7 +122,13 @@ class IMU:
         if not self.is_open:
             raise RuntimeError("IMU is not open. Please initialize the sensor first.")
 
-        quat_raw = np.array(self.sensor.quaternion, dtype=np.float32, copy=True)
+        if self.use_game_rotation:
+            quat_raw = np.array(
+                self.sensor.game_quaternion, dtype=np.float32, copy=True
+            )
+        else:
+            quat_raw = np.array(self.sensor.quaternion, dtype=np.float32, copy=True)
+
         rot_raw = R.from_quat(quat_raw)
         if self.zero_yaw is None:
             self.zero_yaw = rot_raw.as_euler("xyz")[2]
@@ -163,7 +179,8 @@ class ThreadedIMU:
         self.decimation_factor = int(self.input_freq / self.output_freq)
 
         # Initialize IMU with high frequency
-        self.imu = IMU()  # No additional rotation smoothing
+        self.imu1 = IMU(address=0x4A)  # IMU1 on top side
+        self.imu2 = IMU(address=0x4B, offset=0)  # IMU2 on bottom side
 
         # Threading controls
         self.running = False
@@ -181,8 +198,10 @@ class ThreadedIMU:
         )
 
         # Filter state for angular velocity (3 axes)
-        self.ang_vel_past_inputs = np.zeros((len(self.b) - 1, 3), dtype=np.float32)
-        self.ang_vel_past_outputs = np.zeros((len(self.a) - 1, 3), dtype=np.float32)
+        self.ang_vel1_past_inputs = np.zeros((len(self.b) - 1, 3), dtype=np.float32)
+        self.ang_vel1_past_outputs = np.zeros((len(self.a) - 1, 3), dtype=np.float32)
+        self.ang_vel2_past_inputs = np.zeros((len(self.b) - 1, 3), dtype=np.float32)
+        self.ang_vel2_past_outputs = np.zeros((len(self.a) - 1, 3), dtype=np.float32)
 
         # Decimation counter
         self.sample_counter = 0
@@ -196,27 +215,76 @@ class ThreadedIMU:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
+    def combine_quaternion(self, q1_wxyz, q2_wxyz):
+        r1 = R.from_quat(q1_wxyz, scalar_first=True)
+        r2 = R.from_quat(q2_wxyz, scalar_first=True)
+
+        # Get yaw (about world Z) from each, using stable atan2 on the rotation matrix
+        R1 = r1.as_matrix()
+        R2 = r2.as_matrix()
+        yaw1 = np.arctan2(R1[1, 0], R1[0, 0])
+        yaw2 = np.arctan2(R2[1, 0], R2[0, 0])
+
+        # Remove yaw from r1 to get pure tilt (roll+pitch) in world frame
+        r1_no_yaw = R.from_euler("Z", -yaw1) * r1
+
+        # Combine: yaw from q2, tilt from q1
+        r = R.from_euler("Z", yaw2) * r1_no_yaw
+
+        q_wxyz = r.as_quat(scalar_first=True)
+        # Normalize for safety
+        q_wxyz /= np.linalg.norm(q_wxyz)
+        return q_wxyz
+
+    def combine_angular_velocity(self, ang_vel_raw1, ang_vel_raw2):
+        """
+        Combine angular velocities from two IMUs to get roll, pitch, and yaw rates.
+        """
+
+        # Directly extract and combine components
+        combined_ang_vel = np.array(
+            [
+                ang_vel_raw1[0],  # IMU1's x component → roll_rate (around X axis)
+                ang_vel_raw1[1],  # IMU1's y component → pitch_rate (around Y axis)
+                ang_vel_raw2[2],  # IMU2's z component → yaw_rate (around Z axis)
+            ]
+        )
+        return combined_ang_vel
+
     def _run(self):
         """Main data collection loop running at specified input frequency."""
         while self.running:
             try:
                 # Get raw IMU data with timeout
                 t_start = time.monotonic()
-                quat_raw, ang_vel_raw = self.imu.get_state()
+                quat_raw1, ang_vel_raw1 = self.imu1.get_state()
+                quat_raw2, ang_vel_raw2 = self.imu2.get_state()
 
                 # Apply Butterworth filter to angular velocity
                 # (
-                #     filtered_ang_vel,
-                #     self.ang_vel_past_inputs,
-                #     self.ang_vel_past_outputs,
+                #     filtered_ang_vel1,
+                #     self.ang_vel1_past_inputs,
+                #     self.ang_vel1_past_outputs,
                 # ) = butterworth(
                 #     self.b,
                 #     self.a,
-                #     ang_vel_raw,
-                #     self.ang_vel_past_inputs,
-                #     self.ang_vel_past_outputs,
+                #     ang_vel_raw1,
+                #     self.ang_vel1_past_inputs,
+                #     self.ang_vel1_past_outputs,
                 # )
-                filtered_ang_vel = ang_vel_raw
+                # (
+                #     filtered_ang_vel2,
+                #     self.ang_vel2_past_inputs,
+                #     self.ang_vel2_past_outputs,
+                # ) = butterworth(
+                #     self.b,
+                #     self.a,
+                #     ang_vel_raw2,
+                #     self.ang_vel2_past_inputs,
+                #     self.ang_vel2_past_outputs,
+                # )
+                filtered_ang_vel1 = ang_vel_raw1
+                filtered_ang_vel2 = ang_vel_raw2
 
                 t_end = time.monotonic()
 
@@ -226,10 +294,17 @@ class ThreadedIMU:
                     self.sample_counter = 0
 
                     with self.lock:
+                        quat = self.combine_quaternion(quat_raw1, quat_raw2)
+                        ang_vel = self.combine_angular_velocity(
+                            filtered_ang_vel1, filtered_ang_vel2
+                        )
                         self.latest_state = (
-                            quat_raw.copy(),
-                            ang_vel_raw.copy(),
-                            filtered_ang_vel.copy(),
+                            quat_raw1.copy(),
+                            quat_raw2.copy(),
+                            quat.copy(),
+                            ang_vel_raw1.copy(),
+                            ang_vel_raw2.copy(),
+                            ang_vel.copy(),
                         )
 
                 remaining_time = self.input_dt - (t_end - t_start)
@@ -253,4 +328,5 @@ class ThreadedIMU:
         self.running = False
         if self.thread:
             self.thread.join()
-        self.imu.close()
+        self.imu1.close()
+        self.imu2.close()

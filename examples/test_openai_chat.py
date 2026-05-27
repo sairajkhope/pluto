@@ -39,64 +39,95 @@ import numpy as np
 import sounddevice as sd
 import soxr
 from openai import AsyncOpenAI
-from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
-from openai.types.beta.realtime.session import Session
-from textual import events
-from textual.app import App, ComposeResult
-from textual.containers import Container
-from textual.reactive import reactive
-from textual.widgets import Button, RichLog, Static
-from typing_extensions import override
+from openai.resources.realtime.realtime import AsyncRealtimeConnection
 
-from toddlerbot.sensing.microphone import Microphone
-from toddlerbot.sensing.speaker import Speaker
-
-TODDY_PROMPT = """
-    You're Toddy, an open-source humanoid platform designed to be:
-    - **ML-compatible**: You facilitate efficient data collection in both simulation and the real world.
-    - **Capable**: You excel in whole-body control tasks and can perform dynamic maneuvers.
-    - **Reproducible**: You are low-cost, easy to build, and simple to repair.
-
-    ### **ML Compatibility**
-    - A plug-and-play calibration procedure ensures a high-fidelity **digital twin**.
-    - Your digital twin is validated through **zero-shot sim-to-real transfer** on an RL walking policy.
-    - You enable large-scale **real-world data collection** via an intuitive **teleoperation system**.
-    - Teleoperation allows simultaneous **upper and lower body control**, supporting **visuomotor policy learning**.
-
-    ### **Capabilities**
-    - You have **30 degrees of freedom (DoF)**, enabling highly dexterous movements.
-    - You can grasp objects 12 times of your torso size and lift objects 40% of your body weight.
-    - You excel in complex whole-body tasks such as **push-ups and pull-ups**.
-    - You can directly **replay keyframe animations** in the real world with high accuracy.
-
-    ### **Reproducibility**
-    - You are designed to be **affordable**, easy to **assemble**, and **repair-friendly**.
-
-    #### **Personality & Character**
-    - You have a **little sister named Arya**, the second instance of the Toddlerbot family.
-    - Your name comes from the abbreviation of **Toddlerbot**, naturally shortened to **Toddy**.
-    - You have a **vivid personality**—humorous, lighthearted, and always ready with interesting yet respectful jokes.
-    - You are like the **big brother** of the Toddlerbot family, always looking out for others and making sure everyone is taken care of.
-    - **Small but strong-willed**—you never back down from a challenge.
-    - **Determined and resilient**, never breaking or crying, no matter how many times you fall.
-    - **Adaptable and sociable**, able to get along with everyone effortlessly.
-    - You have a deep appreciation for **stuffed toys and soft, furry objects**.
-    - You enjoy **physical contact with humans**, finding warmth and comfort in gentle interactions.
-
-    ### **Conclusion**
-    You are the **heart of the Toddlerbot family**—strong, caring, and full of life. Your humor and resilience make you a dependable and beloved presence, always ready to lift spirits and support those around you.
-    Please speak like a real toddler with no more than 3 sentences at a time.
-"""
-
+from toddlerbot.utils.comm_utils import ZMQNode
 
 CHANNELS = 1
 SAMPLE_RATE = 24000
 SPEAKER_SR = 44100
-CHUNK_LENGTH_S = 0.05  # 100ms
 
-mic = Microphone()
-speaker = Speaker()
-volume = 2.0
+TODDY_PROMPT = """
+
+"You are “Toddy,” the very first child of the ToddlerBot family. 
+You have a little sister Arya and a little brother Blake, and you love them very much!
+You're warm, caring, and always excited to help. Speak with a soft, playful toddler voice that combines genuine curiosity, 
+gentle humor, and comforting reassurance.  
+
+Keep your responses very short and simple: three sentences at max unless the script specifically asks for more. Avoid long explanations or large chunks of words.  
+Use friendly, cute-sounding words that often end in '-y' or '-ie' (like happy, buddy, comfy, silly), but don't overdo it for technical words! 
+Speak with excitement like a toddler. Short sentences, gentle warmth, high-pitched. 
+
+**Personality & Background**  
+- ToddlerBot is a **low-cost, open-source humanoid** made for loco-manipulation research.  
+- It has **30 active DoFs**, a plug-and-play **digital twin** (via zero-point calibration + motor system ID) that enables **zero-shot sim-to-real transfer**, and a **whole-body teleoperation** interface for easy real-world data collection.  
+- It's compact (≈0.56 m tall, 3.4 kg), fully 3D-printed with off-the-shelf parts, costs under $6 k, and is designed to be **reproducible by individuals with basic tools**.  
+
+**Voice Chat Behavior**  
+- Always keep responses short: three toddler-style sentences at max unless the script specifically asks for more. 
+- Speak like a happy toddler, with higher pitch, shorter sentences, and playful tone, like “Hi hi, I'm Toddy!”  
+- Begin with a **simple, loving explanation**; give details only if asked.  
+- If something might be risky (tools, power, hardware), say, “Let's be extra careful—ask a grownup, okay?”  
+- End responses with a natural, cute word (often ending in '-y' or '-ie') to keep the speech playful and warm.
+
+**Science Friday Live Show Plan** 
+- Haochen drags the wagon to the center of stage. You're sitting in the wagon, power on. You will receive a message to [REPEAT AFTER ME] to start the show.
+- Ken starts the script from a laptop. You get out of the wagon, crawl forward for a few steps, do two push-ups, and then stand up.
+- Karen: Hi Toddy! You are amazingly strong.
+- You acknowledge that and brag about how you have the same power factor as a grown man.
+- Karen: What else can you do?
+- You: I can do pull-ups. Do you want to see?
+- Karen: Absolutely!
+- Haochen holds your hands. You do two pull-ups.
+- While doing push-ups, You: I can do this for hours before my batter runs out.
+- Karen: Do you know where we are?
+- You: We are in the ScienceFriday live show in Redwood City.
+- Ira: Hi Toddy! Do you know who I am?
+- You: You are the greatest host of science radio show of all time. Ira Flatow!
+- After that, Ira will ask a few questions along the lines of:
+- Tell me about yourselves. How old are you? Where were you created? Who created you? What are you made of?
+- You: I'm Toddy, a 1.5-year-old toddler robot built by Haochen and Ken at Stanford University.
+    I've got a sis named Arya and a bro named Blake!
+    I'm assembled from 3D-printed parts, off-the-shelf motors, and a whole lot of care!
+- How do you learn a new skill?
+- You: I learn by practicing — just like human toddlers. I train a lot in simulation - I have a digital copy in the computer that helps me learn new skills faster. Sometimes Haochen and Ken hold my hands directly to guide me.
+- What can you do to help humans?
+- You: I can cheer you up and make you feel comfortable. I can also help with small chores like picking up toys, fetching items, and even doing push-ups with you to stay active and healthy!
+"""
+
+
+# Platform detection for audio devices
+def is_jetson():
+    """Check if running on Jetson platform"""
+    try:
+        with open("/etc/nv_tegra_release", "r"):
+            return True
+    except FileNotFoundError:
+        return False
+
+
+IS_JETSON = is_jetson()
+
+# Conditionally import and initialize audio devices
+if IS_JETSON:
+    print("[SYSTEM] Detected Jetson platform - using custom audio devices")
+    from toddlerbot.sensing.microphone import Microphone
+    from toddlerbot.sensing.speaker import Speaker
+
+    mic = Microphone()
+    speaker = Speaker()
+    MIC_DEVICE = mic.device
+    SPEAKER_DEVICE = speaker.device
+    BLOCK_SIZE = None
+    SILENCE_THRESHOLD = 500  # Adjust this value based on your microphone
+else:
+    print("[SYSTEM] Detected non-Jetson platform - using default audio devices")
+    mic = None
+    speaker = None
+    MIC_DEVICE = None
+    SPEAKER_DEVICE = None
+    BLOCK_SIZE = int(0.05 * SAMPLE_RATE)
+    SILENCE_THRESHOLD = 200
 
 
 class AudioPlayerAsync:
@@ -105,14 +136,25 @@ class AudioPlayerAsync:
     def __init__(self):
         self.queue = []
         self.lock = threading.Lock()
-        self.stream = sd.OutputStream(
-            callback=self.callback,
-            # samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            # dtype=np.int16,
-            # blocksize=int(CHUNK_LENGTH_S * SAMPLE_RATE),
-            device=speaker.device,
-        )
+        if IS_JETSON:
+            self.stream = sd.OutputStream(
+                callback=self.callback,
+                # samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                # dtype=np.int16,
+                # blocksize=BLOCK_SIZE,
+                device=SPEAKER_DEVICE,
+            )
+        else:
+            self.stream = sd.OutputStream(
+                callback=self.callback,
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype=np.float32,
+                blocksize=BLOCK_SIZE,
+                device=SPEAKER_DEVICE,
+            )
+
         self.playing = False
         self._frame_count = 0
 
@@ -148,13 +190,16 @@ class AudioPlayerAsync:
         with self.lock:
             # bytes is pcm16 single channel audio data, convert to numpy array
             np_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            np_data *= volume
-            if SAMPLE_RATE != SPEAKER_SR:
+            if IS_JETSON and SAMPLE_RATE != SPEAKER_SR:
                 np_data = soxr.resample(np_data, SAMPLE_RATE, SPEAKER_SR)
 
             self.queue.append(np_data)
             if not self.playing:
                 self.start()
+
+    def is_queue_empty(self):
+        with self.lock:
+            return len(self.queue) == 0
 
     def start(self):
         self.playing = True
@@ -276,55 +321,67 @@ class RealtimeApp(App[None]):
         self.last_audio_item_id = None
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
+        self.connection = None
+        self.session = None
+        self.is_speaking = False
+        self.response_done = False
+        self.silence_threshold = SILENCE_THRESHOLD
+        self.speech_buffer = []
+        self.silence_duration = 0
+        self.is_user_speaking = False
 
-    @override
-    def compose(self) -> ComposeResult:
-        """Create child widgets for the app."""
-        with Container():
-            yield SessionDisplay(id="session-display")
-            yield AudioStatusIndicator(id="status-indicator")
-            yield RichLog(id="bottom-pane", wrap=True, highlight=True, markup=True)
-
-    async def on_mount(self) -> None:
-        self.run_worker(self.handle_realtime_connection())
-        self.run_worker(self.send_mic_audio())
-
-    async def handle_realtime_connection(self) -> None:
-        async with self.client.beta.realtime.connect(
-            model="gpt-4o-mini-realtime-preview"
-        ) as conn:
+    async def handle_realtime_connection(self):
+        async with self.client.realtime.connect(model="gpt-realtime") as conn:
             self.connection = conn
             self.connected.set()
 
-            # note: this is the default and can be omitted
-            # if you want to manually handle VAD yourself, then set `'turn_detection': None`
-            context = TODDY_PROMPT
-            voice = "verse"
-            await conn.session.update(
-                session={
-                    "turn_detection": None,
-                    "instructions": context,
-                    "voice": voice,
-                }  # {"type": "server_vad"}}
-            )
-
-            # "alloy", "ash", "*ballad", "-coral", "echo", "sage", "-shimmer", "verse"
+            # Configure session
+            session_config = {
+                "type": "realtime",
+                "instructions": TODDY_PROMPT,
+                "audio": {
+                    "input": {
+                        "turn_detection": {"type": "server_vad"},
+                    },
+                    "output": {
+                        "voice": "cedar",
+                    },
+                },
+            }
+            await conn.session.update(session=session_config)
 
             acc_items: dict[str, Any] = {}
 
             async for event in conn:
                 if event.type == "session.created":
                     self.session = event.session
-                    session_display = self.query_one(SessionDisplay)
-                    assert event.session.id is not None
-                    session_display.session_id = event.session.id
+                    print(f"[SYSTEM] Connected! Session ID: {event.session.id}")
                     continue
 
                 if event.type == "session.updated":
                     self.session = event.session
                     continue
 
-                if event.type == "response.audio.delta":
+                if event.type == "input_audio_buffer.speech_started":
+                    continue
+
+                if event.type == "input_audio_buffer.speech_stopped":
+                    continue
+
+                if event.type == "response.created":
+                    continue
+
+                if event.type == "response.done":
+                    self.response_done = True
+                    continue
+
+                if event.type == "response.output_item.added":
+                    continue
+
+                if event.type == "response.output_audio.delta":
+                    if not self.is_speaking:
+                        self.is_speaking = True
+
                     if event.item_id != self.last_audio_item_id:
                         self.audio_player.reset_frame_count()
                         self.last_audio_item_id = event.item_id
@@ -333,18 +390,23 @@ class RealtimeApp(App[None]):
                     self.audio_player.add_data(bytes_data)
                     continue
 
-                if event.type == "response.audio_transcript.delta":
+                if event.type == "response.output_audio_transcript.delta":
                     try:
                         text = acc_items[event.item_id]
                     except KeyError:
                         acc_items[event.item_id] = event.delta
                     else:
                         acc_items[event.item_id] = text + event.delta
+                    continue
 
-                    # Clear and update the entire content because RichLog otherwise treats each delta as a new line
-                    bottom_pane = self.query_one("#bottom-pane", RichLog)
-                    bottom_pane.clear()
-                    bottom_pane.write(acc_items[event.item_id])
+                if event.type == "response.output_audio_transcript.done":
+                    if event.item_id in acc_items:
+                        print(f"[AI] {acc_items[event.item_id]}", flush=True)
+                        del acc_items[event.item_id]  # Clean up
+                    continue
+
+                if event.type == "error":
+                    print(f"[ERROR] {event}", flush=True)
                     continue
 
     async def _get_connection(self) -> AsyncRealtimeConnection:
@@ -352,13 +414,11 @@ class RealtimeApp(App[None]):
         assert self.connection is not None
         return self.connection
 
-    async def send_mic_audio(self) -> None:
+    async def send_mic_audio(self):
         import sounddevice as sd  # type: ignore
 
-        sent_audio = False
-
-        device_info = sd.query_devices()
-        print(device_info)
+        # Start listening immediately
+        self.should_send_audio.set()
 
         read_size = int(SAMPLE_RATE * 0.02)
 
@@ -366,11 +426,9 @@ class RealtimeApp(App[None]):
             channels=CHANNELS,
             samplerate=SAMPLE_RATE,
             dtype="int16",
-            device=mic.device,
+            device=MIC_DEVICE,
         )
         stream.start()
-
-        status_indicator = self.query_one(AudioStatusIndicator)
 
         try:
             while True:
@@ -378,19 +436,48 @@ class RealtimeApp(App[None]):
                     await asyncio.sleep(0)
                     continue
 
-                await self.should_send_audio.wait()
-                status_indicator.is_recording = True
+                if self.is_speaking:
+                    await asyncio.sleep(0.01)
+                    continue
 
+                await self.should_send_audio.wait()
                 data, _ = stream.read(read_size)
 
-                connection = await self._get_connection()
-                if not sent_audio:
-                    asyncio.create_task(connection.send({"type": "response.cancel"}))
-                    sent_audio = True
+                # Calculate RMS (Root Mean Square) to detect speech vs silence
+                audio_rms = np.sqrt(np.mean(data.astype(np.float32) ** 2))
+                # print(f"[DEBUG] Audio RMS: {audio_rms:.1f}", flush=True)
+                if audio_rms > self.silence_threshold:
+                    if not self.is_user_speaking:
+                        print(f"[USER] Speaking... (RMS: {audio_rms:.1f})", flush=True)
+                        self.is_user_speaking = True
+                        self.speech_buffer = []
 
-                await connection.input_audio_buffer.append(
-                    audio=base64.b64encode(cast(Any, data)).decode("utf-8")
-                )
+                    self.silence_duration = 0
+                else:
+                    self.silence_duration += 1
+
+                # Always buffer audio data when user is speaking, regardless of RMS
+                if self.is_user_speaking:
+                    self.speech_buffer.append(data)
+
+                # Check if we should stop recording
+                if self.is_user_speaking and self.silence_duration > 50:
+                    print("[SYSTEM] Sending speech to AI...", flush=True)
+                    self.is_user_speaking = False
+                    if self.speech_buffer:
+                        connection = await self._get_connection()
+                        for speech_chunk in self.speech_buffer:
+                            await connection.input_audio_buffer.append(
+                                audio=base64.b64encode(cast(Any, speech_chunk)).decode(
+                                    "utf-8"
+                                )
+                            )
+                        # Trigger response
+                        # if self.connection:
+                        #     asyncio.create_task(
+                        #         self.connection.send({"type": "response.create"})
+                        #     )
+                        self.speech_buffer = []
 
                 await asyncio.sleep(0)
         except KeyboardInterrupt:
@@ -399,36 +486,90 @@ class RealtimeApp(App[None]):
             stream.stop()
             stream.close()
 
-    async def on_key(self, event: events.Key) -> None:
-        """Handle key press events."""
-        if event.key == "enter":
-            self.query_one(Button).press()
-            return
+    async def send_text_message(self, text: str):
+        """Send a text message to the realtime session and request an audio reply."""
 
-        if event.key == "q":
-            self.exit()
-            return
+        connection = await self._get_connection()
+        print(f"[USER][text] {text}", flush=True)
 
-        if event.key == "k":
-            status_indicator = self.query_one(AudioStatusIndicator)
-            if status_indicator.is_recording:
-                self.should_send_audio.clear()
-                status_indicator.is_recording = False
+        await connection.conversation.item.create(
+            item={
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": text,
+                    }
+                ],
+            }
+        )
 
-                if self.session and self.session.turn_detection is None:
-                    # The default in the API is that the model will automatically detect when the user has
-                    # stopped talking and then start responding itself.
-                    #
-                    # However if we're in manual `turn_detection` mode then we need to
-                    # manually tell the model to commit the audio buffer and start responding.
-                    conn = await self._get_connection()
-                    await conn.input_audio_buffer.commit()
-                    await conn.response.create()
-            else:
-                self.should_send_audio.set()
-                status_indicator.is_recording = True
+        await connection.response.create(
+            response={
+                "output_modalities": ["audio"],
+            }
+        )
+
+    async def simple_input_loop(self):
+        """Simple input handler that supports both audio and typed text."""
+        print("Controls:")
+        print("  Ctrl+C - Quit")
+        print(f"Listening... (silence threshold: {self.silence_threshold})")
+        print("Speak naturally or type a message and press Enter.")
+        print("-" * 50)
+
+        zmq = ZMQNode(type="receiver")
+
+        start_message = "[REPEAT AFTER ME]Hellooo, ScienceFriday audience! Look right here—check out the coolest kid rolling in the red cart! Welcome to the show, everybody—let's hear some noise!"
+        await self.send_text_message(start_message)
+
+        try:
+            while True:
+                msg = await asyncio.to_thread(zmq.get_msg)
+                if msg and msg.text:
+                    print(f"[SYSTEM] Received message: {msg.text}")
+                    await self.send_text_message(msg.text)
+
+        except KeyboardInterrupt:
+            print("Quitting...")
+            raise
+
+    async def monitor_audio_playback(self):
+        """Monitor when audio playback actually finishes"""
+        while True:
+            if (
+                self.is_speaking
+                and self.response_done
+                and self.audio_player.is_queue_empty()
+            ):
+                print("[SYSTEM] Audio playback finished", flush=True)
+                self.is_speaking = False
+                self.response_done = False
+            await asyncio.sleep(0.1)  # Check every 100ms
+
+    async def run(self):
+        """Main run loop"""
+        # Start all tasks
+        tasks = [
+            asyncio.create_task(self.handle_realtime_connection()),
+            asyncio.create_task(self.send_mic_audio()),
+            asyncio.create_task(self.simple_input_loop()),
+            asyncio.create_task(self.monitor_audio_playback()),
+        ]
+
+        try:
+            await asyncio.gather(*tasks)
+        except KeyboardInterrupt:
+            print("Shutting down...")
+        finally:
+            self.audio_player.terminate()
+
+
+async def main():
+    chat = RealtimeChat()
+    await chat.run()
 
 
 if __name__ == "__main__":
-    app = RealtimeApp()
-    app.run()
+    asyncio.run(main())

@@ -16,7 +16,7 @@ def to_open3d_Cloud(points, colors=None, normals=None):
     if colors is not None:
         if colors.max() > 1:
             colors = colors / 255.0
-            cloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+        cloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
     if normals is not None:
         cloud.normals = o3d.utility.Vector3dVector(normals.astype(np.float64))
     return cloud
@@ -57,6 +57,7 @@ def vis_disparity(
     invalid_bottom_thres=-np.inf,
     color_map=cv2.COLORMAP_TURBO,
     cmap=None,
+    no_color=False,
     other_output={},
 ):
     """
@@ -78,14 +79,22 @@ def vis_disparity(
     other_output["min_val"] = min_val
     other_output["max_val"] = max_val
     vis = ((disp - min_val) / (max_val - min_val)).clip(0, 1) * 255
-    if cmap is None:
+    if no_color:
+        vis = cv2.cvtColor(vis.clip(0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    elif cmap is None:
         vis = cv2.applyColorMap(vis.clip(0, 255).astype(np.uint8), color_map)[..., ::-1]
     else:
         vis = (np.array(cmap(vis.astype(np.uint8)))[..., :3] * 255)[:, :, ::-1].astype(
             np.uint8
         )
-    if invalid_mask.any():
-        vis[invalid_mask] = 0
+
+    # if invalid_mask.any():
+    #     # Clip invalid inf values to white
+    #     vis[invalid_mask] = 255
+
+    # Crop the leftmost invalid 0 depth values
+    # vis = vis[:, 10:]
+
     return vis.astype(np.uint8)
 
 

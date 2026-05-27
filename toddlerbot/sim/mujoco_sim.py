@@ -13,6 +13,10 @@ from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.motor_control import MotorController, PositionController
 from toddlerbot.sim.mujoco_utils import MuJoCoRenderer, MuJoCoViewer
 from toddlerbot.sim.robot import Robot
+from toddlerbot.sim.terrain.get_elevation import (
+    get_elevation_map,
+    update_elevation_visualization,
+)
 
 
 class MuJoCoSim(BaseSim):
@@ -34,6 +38,7 @@ class MuJoCoSim(BaseSim):
         dt: float = 0.001,
         fixed_base: bool = False,
         xml_path: str = "",
+        model: mujoco.MjModel = None,
         vis_type: str = "",
         controller_type: str = "torque",
     ):
@@ -72,7 +77,10 @@ class MuJoCoSim(BaseSim):
                 description_dir, robot.name, f"scene{xml_suffix}.xml"
             )
 
-        self.model = mujoco.MjModel.from_xml_path(xml_path)
+        if model is not None:
+            self.model = model
+        else:
+            self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
 
         self.model.opt.timestep = self.dt
@@ -127,6 +135,16 @@ class MuJoCoSim(BaseSim):
             self.visualizer = None
 
         self.ee_markers = []  # List of (pos, color) tuples
+
+        # Elevation visualization attributes (set by external code like run_multiple_policy.py)
+        self.elevation_info = None
+        self.visualize_elevation = False
+        self.elevation_map_size = 0.5
+        self.elevation_map_resolution = 0.02
+        self.elevation_map_forward_offset = 0.25
+
+        self.depth_renderer = None  # Depth renderer for capturing depth images
+        self.rgb_renderer = None  # RGB renderer for capturing RGB images
 
     def add_ee_marker(self, pos, color):
         if len(self.ee_markers) > 1:
@@ -194,6 +212,56 @@ class MuJoCoSim(BaseSim):
             return motor_pos_arr
         else:
             return motor_angles
+
+    def get_motor_velocities(
+        self, type: str = "dict"
+    ) -> Dict[str, float] | npt.NDArray[np.float32]:
+        """Retrieves the current velocities of the robot's motors.
+
+        Args:
+            type (str): The format in which to return the motor velocities.
+                Options are "dict" for a dictionary format or "array" for a NumPy array.
+                Defaults to "dict".
+
+        Returns:
+            Dict[str, float] or npt.NDArray[np.float32]: The motor velocities in the specified format.
+            If "dict", returns a dictionary with motor names as keys and velocities as values.
+            If "array", returns a NumPy array of motor velocities.
+        """
+        motor_velocities: Dict[str, float] = {}
+        for name in self.robot.motor_ordering:
+            motor_velocities[name] = self.data.joint(name).qvel.item()
+
+        if type == "array":
+            motor_vel_arr = np.array(list(motor_velocities.values()), dtype=np.float32)
+            return motor_vel_arr
+        else:
+            return motor_velocities
+
+    def get_joint_velocities(
+        self, type: str = "dict"
+    ) -> Dict[str, float] | npt.NDArray[np.float32]:
+        """Retrieves the current velocities of the robot's passive joints.
+
+        Args:
+            type (str): The format in which to return the joint velocities.
+                Options are "dict" for a dictionary format or "array" for a NumPy array.
+                Defaults to "dict".
+
+        Returns:
+            Dict[str, float] or npt.NDArray[np.float32]: The joint velocities in the specified format.
+            If "dict", returns a dictionary with joint names as keys and velocities as values.
+            If "array", returns a NumPy array of joint velocities.
+        """
+        joint_velocities: Dict[str, float] = {}
+        for name in self.robot.joint_ordering:
+            joint_velocities[name] = self.data.joint(name).qvel.item()
+
+        if type == "array":
+            joint_vel_arr = np.array(list(joint_velocities.values()), dtype=np.float32)
+            return joint_vel_arr
+        else:
+            return joint_velocities
 
     def get_joint_angles(
         self, type: str = "dict"
@@ -426,6 +494,18 @@ class MuJoCoSim(BaseSim):
                 self.target_motor_pos,
             )
             mujoco.mj_step(self.model, self.data)
+
+        if self.visualize_elevation:
+            global_map, _, x_coords, y_coords = get_elevation_map(
+                self.data,
+                self.elevation_info,
+                self.elevation_map_size,
+                self.elevation_map_resolution,
+                self.elevation_map_forward_offset,
+            )
+            update_elevation_visualization(
+                self.data, self.model, global_map, x_coords, y_coords
+            )
 
         if self.visualizer is not None:
             self.visualizer.visualize(self.data)

@@ -79,13 +79,13 @@ class MuJoCoViewer:
                 f"right_{self.robot.foot_name}_collision",
             ]
             foot_geom_size = np.array(self.model.geom(self.foot_names[0]).size)
-            # Define the local coordinates of the bounding box corners
+            # Define the local coordinates of the bounding box corners on ground plane (X-Y)
             self.local_bbox_corners = np.array(
                 [
-                    [0.0, -foot_geom_size[1], -foot_geom_size[2]],
-                    [0.0, -foot_geom_size[1], foot_geom_size[2]],
-                    [0.0, foot_geom_size[1], foot_geom_size[2]],
-                    [0.0, foot_geom_size[1], -foot_geom_size[2]],
+                    [-foot_geom_size[0], -foot_geom_size[1], 0.0],  # back-left
+                    [-foot_geom_size[0], foot_geom_size[1], 0.0],   # back-right
+                    [foot_geom_size[0], foot_geom_size[1], 0.0],    # front-right
+                    [foot_geom_size[0], -foot_geom_size[1], 0.0],   # front-left
                 ]
             )
 

@@ -88,6 +88,41 @@ def generate_slope_patch(size, peak=0.2, flat_ratio=0.15):
     return hmap, peak
 
 
+# TODO: Slopes don't look realistic yet due to limitied resolution of heightmap.
+def generate_up_slope_patch(size, peak=0.13):
+    """
+    Generate a linear slope going up from left to right.
+
+    Args:
+        size (int): Size of the heightmap (square).
+        peak (float): Maximum height at the right edge.
+
+    Returns:
+        Tuple[np.ndarray, float]: Heightmap and max height.
+    """
+    hmap = np.zeros((size, size), dtype=np.float32)
+    x_coords = np.linspace(0, 1, size)
+    hmap[:, :] = x_coords * peak
+    return hmap, peak
+
+
+def generate_down_slope_patch(size, peak=0.13):
+    """
+    Generate a linear slope going down from left to right.
+
+    Args:
+        size (int): Size of the heightmap (square).
+        peak (float): Maximum height at the left edge.
+
+    Returns:
+        Tuple[np.ndarray, float]: Heightmap and max height.
+    """
+    hmap = np.zeros((size, size), dtype=np.float32)
+    x_coords = np.linspace(0, 1, size)
+    hmap[:, :] = (1 - x_coords) * peak
+    return hmap, peak
+
+
 def generate_stairs_patch(size, num_steps=5, peak_height=0.1):
     """
     Generate a stair-like concentric step pattern.
@@ -160,3 +195,39 @@ def generate_boxes_patch(
             attempts += 1
 
     return hmap, box_height
+
+
+def generate_box_patch(size):
+    """
+    Generate a flat patch. The box obstacle is a separate geom.
+    """
+    hmap = np.zeros((size, size), dtype=np.float32)
+    return hmap, 0.0
+
+
+def generate_crawl_patch(size):
+    """
+    Generate a flat patch for the crawl task. The chair is added later.
+
+    Args:
+        size (int): Resolution of the square heightmap.
+
+    Returns:
+        Tuple[np.ndarray, float]: Heightmap array and its max height (0.0).
+    """
+    hmap = np.zeros((size, size), dtype=np.float32)
+    return hmap, 0.0
+
+
+def generate_wall_patch(size):
+    """
+    Generate a flat patch for the wall obstacle. The wall geom is added later.
+
+    Args:
+        size (int): Resolution of the square heightmap.
+
+    Returns:
+        Tuple[np.ndarray, float]: Heightmap array and its max height (0.0).
+    """
+    hmap = np.zeros((size, size), dtype=np.float32)
+    return hmap, 0.0

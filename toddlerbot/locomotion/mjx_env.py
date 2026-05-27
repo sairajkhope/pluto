@@ -6,8 +6,9 @@ reward computation, and environment management using MuJoCo and JAX.
 """
 
 import os
+import xml.etree.ElementTree as ET
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 import gin
 import jax
@@ -29,12 +30,248 @@ from toddlerbot.sim.robot import Robot
 from toddlerbot.sim.terrain.generate_terrain import (
     create_terrain_spec,
 )
+from toddlerbot.sim.terrain.get_elevation import get_robot_ground_height
 from toddlerbot.utils.math_utils import get_local_vec
 
 # from toddlerbot.utils.misc_utils import profile
 
 # Global registry to store env names and their corresponding classes
-env_registry: Dict[str, Type["MJXEnv"]] = {}
+env_registry: dict[str, type["MJXEnv"]] = {}
+
+
+def add_contact_limits_to_xml(xml_path: str, max_contacts: int, max_pairs: int) -> str:
+    """Add contact limits to XML in memory (does not modify files on disk).
+
+    Returns modified XML string with MuJoCo size element for contact limits.
+    """
+    with open(xml_path) as f:
+        xml_string = f.read()
+
+    root = ET.fromstring(xml_string)
+
+    # Add size element with contact limits
+    size = root.find("size")
+    if size is None:
+        size = ET.SubElement(root, "size")
+
+    size.set("nconmax", str(max_contacts))
+    size.set("njmax", str(max_pairs * 10))
+
+    return ET.tostring(root, encoding="unicode")
+
+
+def add_obstacle_copies_to_xml(
+    xml_string: str,
+    heights: list[float],
+    spawn_y_offsets: list[float],
+    scene_name: str = "",
+    collision_geoms: list[str] | None = None,
+) -> str:
+    """Add copies of obstacles at different Y positions and heights.
+
+    Auto-detects obstacle type based on scene name:
+    - Stairs scenes (scene name contains 'stairs'): Creates stair sets where each
+      step has the specified absolute height. The Z positions adjust cumulatively.
+    - Other scenes: Creates single obstacles with specified absolute heights.
+
+    Args:
+        xml_string: The XML string to modify.
+        heights: Absolute heights in meters. For stairs, this is the step height
+                 (e.g., [0.0075, 0.025, 0.0425, 0.06, 0.0775] for 0.75-7.75cm steps).
+        spawn_y_offsets: List of Y-axis positions for each obstacle variant.
+        scene_name: Scene name used to detect obstacle type (e.g., 'scene_mjx_crawl_up_stairs').
+        collision_geoms: List of robot geom names that should collide with obstacles.
+            If None, uses default collision geoms from original XML.
+
+    Returns:
+        Modified XML string with multiple obstacles.
+    """
+    root = ET.fromstring(xml_string)
+    worldbody = root.find("worldbody")
+    contact = root.find("contact")
+
+    if worldbody is None:
+        return xml_string
+
+    # Detect if this is a stairs scene
+    is_stairs = "stairs" in scene_name.lower()
+
+    if is_stairs:
+        return _add_stairs_copies_to_xml(
+            root, worldbody, contact, heights, spawn_y_offsets
+        )
+    else:
+        return _add_single_obstacle_copies_to_xml(
+            root, worldbody, contact, heights, spawn_y_offsets
+        )
+
+
+def _add_single_obstacle_copies_to_xml(
+    root: ET.Element,
+    worldbody: ET.Element,
+    contact: ET.Element | None,
+    heights: list[float],
+    spawn_y_offsets: list[float],
+) -> str:
+    """Add copies of a single obstacle (box/wall) at different Y positions."""
+    original_box = worldbody.find(".//geom[@name='box']")
+    if original_box is None:
+        return ET.tostring(root, encoding="unicode")
+
+    # Get original box properties
+    original_size = original_box.get("size", "0.0195 0.303 0.123").split()
+    original_pos = original_box.get("pos", "0.1 0 0").split()
+    box_x = float(original_pos[0])
+    box_half_width = float(original_size[0])
+    box_half_length = float(original_size[1])
+
+    # Collect collision geoms from original contact pairs
+    original_collision_geoms = set()
+    if contact is not None:
+        for pair in contact.findall("pair"):
+            geom1 = pair.get("geom1")
+            geom2 = pair.get("geom2")
+            if geom1 == "box" and geom2:
+                original_collision_geoms.add(geom2)
+            elif geom2 == "box" and geom1:
+                original_collision_geoms.add(geom1)
+
+    # Remove original box and its contact pairs
+    worldbody.remove(original_box)
+    if contact is not None:
+        pairs_to_remove = []
+        for pair in contact.findall("pair"):
+            if pair.get("geom1") == "box" or pair.get("geom2") == "box":
+                pairs_to_remove.append(pair)
+        for pair in pairs_to_remove:
+            contact.remove(pair)
+
+    # Create new obstacles at each Y position
+    for i, (height, y_offset) in enumerate(zip(heights, spawn_y_offsets)):
+        half_height = height / 2.0
+        geom_name = f"box_{i}"
+
+        # Create new geom
+        new_geom = ET.SubElement(worldbody, "geom")
+        new_geom.set("name", geom_name)
+        new_geom.set("type", "box")
+        new_geom.set("size", f"{box_half_width} {box_half_length} {half_height}")
+        new_geom.set("pos", f"{box_x} {y_offset} {half_height}")
+        new_geom.set("condim", "3")
+
+        # Add contact pairs for this obstacle
+        if contact is not None:
+            for collision_geom in original_collision_geoms:
+                pair = ET.SubElement(contact, "pair")
+                pair.set("geom1", geom_name)
+                pair.set("geom2", collision_geom)
+
+    return ET.tostring(root, encoding="unicode")
+
+
+def _add_stairs_copies_to_xml(
+    root: ET.Element,
+    worldbody: ET.Element,
+    contact: ET.Element | None,
+    step_heights: list[float],
+    spawn_y_offsets: list[float],
+) -> str:
+    """Add copies of stairs at different Y positions with varying step heights.
+
+    Args:
+        step_heights: Absolute step heights in meters (e.g., [0.0425, 0.0525, 0.0625, 0.0775]).
+        spawn_y_offsets: Y positions for each stair variant.
+
+    For stairs, the height delta from original is computed, then:
+    - Each step's half-height increases by delta/2
+    - Each step's Z position increases by delta/2 + (step_index × delta) to stack correctly
+    """
+    # Find all original stair step geoms (box, box1, box2, box3)
+    step_names = ["box", "box1", "box2", "box3"]
+    original_steps = []
+    for name in step_names:
+        step = worldbody.find(f".//geom[@name='{name}']")
+        if step is not None:
+            original_steps.append(step)
+
+    if len(original_steps) == 0:
+        return ET.tostring(root, encoding="unicode")
+
+    # Parse original step properties
+    step_props = []
+    for step in original_steps:
+        size = [float(x) for x in step.get("size").split()]
+        pos = [float(x) for x in step.get("pos").split()]
+        step_props.append({"size": size, "pos": pos})
+
+    # Get original step height from first step (half-height * 2)
+    original_step_height = step_props[0]["size"][2] * 2.0
+
+    # Collect collision geoms from original contact pairs
+    collision_geoms = set()
+    actual_step_names = [s.get("name") for s in original_steps]
+    if contact is not None:
+        for pair in contact.findall("pair"):
+            geom1 = pair.get("geom1")
+            geom2 = pair.get("geom2")
+            if geom1 in actual_step_names and geom2:
+                collision_geoms.add(geom2)
+            elif geom2 in actual_step_names and geom1:
+                collision_geoms.add(geom1)
+
+    # Remove original steps and their contact pairs
+    for step in original_steps:
+        worldbody.remove(step)
+    if contact is not None:
+        pairs_to_remove = []
+        for pair in contact.findall("pair"):
+            if (
+                pair.get("geom1") in actual_step_names
+                or pair.get("geom2") in actual_step_names
+            ):
+                pairs_to_remove.append(pair)
+        for pair in pairs_to_remove:
+            contact.remove(pair)
+
+    # Create stair sets at each Y position with corresponding step height
+    for variant_idx, (step_height, y_offset) in enumerate(
+        zip(step_heights, spawn_y_offsets)
+    ):
+        # Compute delta from original step height
+        delta = step_height - original_step_height
+
+        for step_idx, props in enumerate(step_props):
+            geom_name = (
+                f"box{step_idx}_{variant_idx}" if step_idx > 0 else f"box_{variant_idx}"
+            )
+
+            # Calculate new size: half-height increases by delta/2
+            new_half_height = props["size"][2] + delta / 2.0
+            new_size = f"{props['size'][0]} {props['size'][1]} {new_half_height}"
+
+            # Calculate new position:
+            # - X stays the same
+            # - Y shifts by spawn_y_offset
+            # - Z increases: own height center shift (delta/2) + cumulative from previous steps
+            new_z = props["pos"][2] + delta / 2.0 + step_idx * delta
+            new_pos = f"{props['pos'][0]} {y_offset} {new_z}"
+
+            # Create new geom
+            new_geom = ET.SubElement(worldbody, "geom")
+            new_geom.set("name", geom_name)
+            new_geom.set("type", "box")
+            new_geom.set("size", new_size)
+            new_geom.set("pos", new_pos)
+            new_geom.set("condim", "3")
+
+            # Add contact pairs
+            if contact is not None:
+                for collision_geom in collision_geoms:
+                    pair = ET.SubElement(contact, "pair")
+                    pair.set("geom1", geom_name)
+                    pair.set("geom2", collision_geom)
+
+    return ET.tostring(root, encoding="unicode")
 
 
 def get_env_config(env: str):
@@ -57,7 +294,7 @@ def get_env_config(env: str):
     return MJXConfig(), PPOConfig()
 
 
-def get_env_class(env_name: str) -> Type["MJXEnv"]:
+def get_env_class(env_name: str) -> type["MJXEnv"]:
     """Returns the environment class associated with the given environment name.
 
     Args:
@@ -105,7 +342,13 @@ class MJXEnv(PipelineEnv):
         self.motion_ref = motion_ref
         self.fixed_base = fixed_base
         self.add_domain_rand = add_domain_rand
-        self.episode_length = get_env_config(name)[-1].episode_length
+        # Automatically configure episode length based on motion reference, falls back to gin file if not available
+        try:
+            self.episode_length = max(
+                motion_ref.n_frames, get_env_config(name)[-1].episode_length
+            )
+        except AttributeError:
+            self.episode_length = get_env_config(name)[-1].episode_length
 
         # Get frame type from motion reference
         self.is_robot_relative_frame = getattr(
@@ -117,7 +360,7 @@ class MJXEnv(PipelineEnv):
 
         description_dir = os.path.join("toddlerbot", "descriptions")
 
-        if not self.fixed_base:
+        if not self.fixed_base and self.cfg.terrain.scene is None:
             xml_path = os.path.join(
                 description_dir, robot.name, f"{robot.name}_mjx.xml"
             )
@@ -125,17 +368,16 @@ class MJXEnv(PipelineEnv):
             terrain_cfg = self.cfg.terrain
             terrain_map = terrain_cfg.manual_map
 
-            spec, _, self.safe_spawns, hmap = create_terrain_spec(
+            spec, _, self.safe_spawns, self.elevation_info, _ = create_terrain_spec(
                 tile_width=terrain_cfg.tile_width,
                 tile_length=terrain_cfg.tile_length,
                 terrain_map=terrain_map,
                 robot_xml_path=xml_path,
                 timestep=self.cfg.sim.timestep,
+                pixels_per_meter=terrain_cfg.resolution_per_meter,
                 robot_collision_geom_names=terrain_cfg.robot_collision_geom_names,
                 self_contact_pairs=self.cfg.sim.self_contact_pairs,
             )
-
-            self.global_hmap = jnp.array(hmap, dtype=jnp.float32)
             self.random_spawn = terrain_cfg.random_spawn
 
             rows, cols = len(terrain_map), len(terrain_map[0])
@@ -161,6 +403,56 @@ class MJXEnv(PipelineEnv):
             # === 3. Compile MJCF model ===
             mj_model = spec.compile()
             sys = mjcf.load_model(mj_model)
+        elif not self.fixed_base and self.cfg.terrain.scene is not None:
+            # Use pre-defined scene XML file
+            xml_path = os.path.join(
+                description_dir, robot.name, f"{self.cfg.terrain.scene}.xml"
+            )
+
+            # Check if we need to modify the XML (contact limits or obstacle randomization)
+            needs_xml_modification = (
+                hasattr(self.cfg.sim, "max_contact_points")
+                and self.cfg.sim.max_contact_points is not None
+                and self.cfg.sim.max_geom_pairs is not None
+            ) or self.cfg.obstacle_rand.enabled
+
+            if needs_xml_modification:
+                # Read the XML file
+                with open(xml_path) as f:
+                    modified_xml_string = f.read()
+
+                # Add contact limits if configured
+                if (
+                    hasattr(self.cfg.sim, "max_contact_points")
+                    and self.cfg.sim.max_contact_points is not None
+                    and self.cfg.sim.max_geom_pairs is not None
+                ):
+                    modified_xml_string = add_contact_limits_to_xml(
+                        xml_path,
+                        self.cfg.sim.max_contact_points,
+                        self.cfg.sim.max_geom_pairs,
+                    )
+
+                # Add obstacle copies at different Y positions if enabled
+                if self.cfg.obstacle_rand.enabled:
+                    modified_xml_string = add_obstacle_copies_to_xml(
+                        modified_xml_string,
+                        self.cfg.obstacle_rand.heights,
+                        self.cfg.obstacle_rand.spawn_y_offsets,
+                        scene_name=self.cfg.terrain.scene,
+                    )
+
+                # Change to XML directory to resolve include paths, then load
+                original_dir = os.getcwd()
+                xml_dir = os.path.dirname(xml_path)
+                os.chdir(xml_dir)
+                try:
+                    mj_model = mujoco.MjModel.from_xml_string(modified_xml_string)
+                    sys = mjcf.load_model(mj_model)
+                finally:
+                    os.chdir(original_dir)
+            else:
+                sys = mjcf.load(xml_path)
         else:
             xml_suffix = ""
             if fixed_base:
@@ -168,7 +460,28 @@ class MJXEnv(PipelineEnv):
             xml_path = os.path.join(
                 description_dir, robot.name, f"scene_mjx{xml_suffix}.xml"
             )
-            sys = mjcf.load(xml_path)
+            # Add contact limits if configured (both must be specified)
+            if (
+                hasattr(self.cfg.sim, "max_contact_points")
+                and self.cfg.sim.max_contact_points is not None
+                and self.cfg.sim.max_geom_pairs is not None
+            ):
+                modified_xml_string = add_contact_limits_to_xml(
+                    xml_path,
+                    self.cfg.sim.max_contact_points,
+                    self.cfg.sim.max_geom_pairs,
+                )
+                # Change to XML directory to resolve include paths, then load
+                original_dir = os.getcwd()
+                xml_dir = os.path.dirname(xml_path)
+                os.chdir(xml_dir)
+                try:
+                    mj_model = mujoco.MjModel.from_xml_string(modified_xml_string)
+                    sys = mjcf.load_model(mj_model)
+                finally:
+                    os.chdir(original_dir)
+            else:
+                sys = mjcf.load(xml_path)
 
         sys = sys.tree_replace(
             {"opt.timestep": cfg.sim.timestep, "opt.solver": cfg.sim.solver}
@@ -207,19 +520,21 @@ class MJXEnv(PipelineEnv):
         self.qd_start_idx = 0 if self.fixed_base else 6
 
         # Store random initial state indices for use during reset
-        # If empty list, we'll use all possible keyframe indices from motion reference
+        # If empty list [], sample uniformly from all frames
         if len(self.cfg.domain_rand.rand_init_state_indices) > 0:
+            # Use specified frame indices (e.g., [0] for no randomization)
             self.rand_init_state_indices = jnp.array(
                 self.cfg.domain_rand.rand_init_state_indices
             )
         else:
-            # Get all possible keyframe indices from motion reference
-            num_keyframes = (
-                self.motion_ref.num_keyframes
-                if hasattr(self.motion_ref, "num_keyframes")
-                else 1
-            )
-            self.rand_init_state_indices = jnp.arange(num_keyframes)
+            # Get total number of frames from motion reference
+            if hasattr(self.motion_ref, "n_frames"):
+                num_frames = self.motion_ref.n_frames
+            else:
+                num_frames = 1  # No motion reference
+
+            # Uniform random sampling from all frames
+            self.rand_init_state_indices = jnp.arange(num_frames)
 
         # colliders
         pair_geom1 = self.sys.pair_geom1
@@ -228,8 +543,8 @@ class MJXEnv(PipelineEnv):
             numpy.concatenate([pair_geom1, pair_geom2])
         )
         self.num_colliders = self.collider_geom_ids.shape[0]
-        left_foot_collider_indices: List[int] = []
-        right_foot_collider_indices: List[int] = []
+        left_foot_collider_indices: list[int] = []
+        right_foot_collider_indices: list[int] = []
         for i, geom_id in enumerate(self.collider_geom_ids):
             geom_name = support.id2name(self.sys, mujoco.mjtObj.mjOBJ_GEOM, geom_id)
             if geom_name is None:
@@ -273,12 +588,14 @@ class MJXEnv(PipelineEnv):
         hip_pitch_joint_mask = (
             numpy.char.find(self.robot.joint_ordering, "hip_pitch") >= 0
         )
+        hip_yaw_joint_mask = numpy.char.find(self.robot.joint_ordering, "hip_yaw") >= 0
         knee_joint_mask = numpy.char.find(self.robot.joint_ordering, "knee") >= 0
         ank_pitch_joint_mask = (
             numpy.char.find(self.robot.joint_ordering, "ankle_pitch") >= 0
         )
 
         self.hip_pitch_joint_indices = self.joint_indices[hip_pitch_joint_mask]
+        self.hip_yaw_joint_indices = self.joint_indices[hip_yaw_joint_mask]
         self.knee_joint_indices = self.joint_indices[knee_joint_mask]
         self.ank_pitch_joint_indices = self.joint_indices[ank_pitch_joint_mask]
 
@@ -330,7 +647,7 @@ class MJXEnv(PipelineEnv):
         # action
         self.action_parts = self.cfg.action.action_parts
 
-        action_mask: List[jax.Array] = []
+        action_mask: list[jax.Array] = []
         for part_name in self.action_parts:
             if part_name == "neck":
                 action_mask.append(self.neck_actuator_indices)
@@ -379,6 +696,20 @@ class MJXEnv(PipelineEnv):
         self.ref_start_idx = 7 + 6
         self.num_obs_history = self.cfg.obs.frame_stack
         self.num_privileged_obs_history = self.cfg.obs.c_frame_stack
+        self.use_phase_signal = self.cfg.obs.use_phase_signal
+
+        # Verify motion reference has motor_vel if not using phase signal
+        if not self.use_phase_signal and self.motion_ref is not None:
+            # Check if motion reference has actual motor_vel data (not just zeros fallback)
+            if (
+                hasattr(self.motion_ref, "has_motor_vel")
+                and not self.motion_ref.has_motor_vel
+            ):
+                raise ValueError(
+                    "Motion reference does not have 'motor_vel' data but use_phase_signal=False. "
+                    "Either set use_phase_signal=True or regenerate the motion file to include motor_vel data."
+                )
+
         self.obs_size = self.cfg.obs.num_single_obs
         self.privileged_obs_size = self.cfg.obs.num_single_privileged_obs
         self.obs_scales = self.cfg.obs_scales
@@ -391,6 +722,12 @@ class MJXEnv(PipelineEnv):
         self.backlash_activation = self.cfg.domain_rand.backlash_activation
         self.torso_roll_range = self.cfg.domain_rand.torso_roll_range
         self.torso_pitch_range = self.cfg.domain_rand.torso_pitch_range
+        self.persistent_torso_pitch_error_range = (
+            self.cfg.domain_rand.persistent_torso_pitch_error_range
+        )
+        self.persistent_torso_roll_error_range = (
+            self.cfg.domain_rand.persistent_torso_roll_error_range
+        )
         self.arm_joint_pos_range = self.cfg.domain_rand.arm_joint_pos_range
         self.add_head_pose = self.cfg.domain_rand.add_head_pose
         self.kp_range = self.cfg.domain_rand.kp_range
@@ -410,6 +747,8 @@ class MJXEnv(PipelineEnv):
         self.push_duration = numpy.ceil(self.cfg.domain_rand.push_duration_s / self.dt)
         self.push_torso_range = self.cfg.domain_rand.push_torso_range
         self.push_other_range = self.cfg.domain_rand.push_other_range
+        self.rand_pos_offset = self.cfg.domain_rand.rand_pos_offset
+        self.rand_yaw_offset = self.cfg.domain_rand.rand_yaw_offset
 
         self.site_indices = {
             support.id2name(self.sys, mujoco.mjtObj.mjOBJ_SITE, i): i
@@ -431,6 +770,14 @@ class MJXEnv(PipelineEnv):
             2: "right_hand_center",  # Site 2: right hand
             3: "right_foot_center",  # Site 3: right foot
         }
+        # TODO: clean this up, remove the two above, vectorize the code
+        # self.recorded_site_indices = []
+        # for recorded_idx, site_name in self.recorded_site_mapping.items():
+        #     robot_site_idx = self.end_effector_site_indices.get(site_name, -1)
+        #     self.recorded_site_indices.append(robot_site_idx)
+
+        # self.recorded_site_indices = jnp.array(self.recorded_site_indices)
+
         # print(f"Initialized site indices: {self.end_effector_site_indices}")
         # print(f"Recorded site mapping: {self.recorded_site_mapping}")
 
@@ -446,6 +793,13 @@ class MJXEnv(PipelineEnv):
         self.ang_vel_tracking_sigma = self.cfg.rewards.ang_vel_tracking_sigma
         self.add_regularization = self.cfg.rewards.add_regularization
         self.use_exp_reward = self.cfg.rewards.use_exp_reward
+        # Pose weights: if None, use uniform weights of 1.0 for controlled joints
+        if self.cfg.rewards.pose_weights is not None:
+            self.pose_weights = jnp.array(self.cfg.rewards.pose_weights)
+        else:
+            self.pose_weights = jnp.ones(self.num_action)
+        # Close feet penalty threshold
+        self.close_feet_threshold = self.cfg.rewards.close_feet_threshold
 
         reward_scale_dict = asdict(self.cfg.reward_scales)
         # Remove zero scales and multiply non-zero ones by dt
@@ -457,7 +811,7 @@ class MJXEnv(PipelineEnv):
         self.reward_names = []
         self.reward_functions = []
         reward_scales = []
-        for i, (name, scale) in enumerate(reward_scale_dict.items()):
+        for _i, (name, scale) in enumerate(reward_scale_dict.items()):
             if not self.add_regularization and any(
                 k in name for k in ["action_rate", "action_acc", "energy", "torque"]
             ):
@@ -509,7 +863,12 @@ class MJXEnv(PipelineEnv):
             rng_kd_min,
             rng_tau_brake_max,
             rng_tau_q_dot_max,
-        ) = jax.random.split(rng, 16)
+            rng_pos_offset,
+            rng_quat_offset,
+            rng_persistent_pitch,
+            rng_persistent_roll,
+            rng_obstacle,
+        ) = jax.random.split(rng, 21)
 
         state_info = {
             "rng": rng,
@@ -519,8 +878,9 @@ class MJXEnv(PipelineEnv):
             "feet_air_dist": jnp.zeros(2),
             "action_buffer": jnp.zeros((self.n_steps_delay + 1) * self.num_action),
             "last_act": jnp.zeros(self.num_action),
-            "rewards": {k: 0.0 for k in self.reward_names},
+            "rewards": dict.fromkeys(self.reward_names, 0.0),
             "imu_state": (jnp.zeros(3), jnp.zeros(3), jnp.zeros(3), jnp.zeros(3)),
+            "torso_height_max": 0,
             "push_step": 0,
             "push_remaining": 0,
             "push_id": 1,
@@ -528,13 +888,15 @@ class MJXEnv(PipelineEnv):
             "done": False,
             "step": 0,
             "global_step": 0,
+            "spawn_y_offset": 0.0,
+            "spawn_z_offset": 0.0,
         }
 
         state_ref = self.motion_ref.get_default_state()
         command = self._sample_command(rng_command)
 
         # Get initial state index
-        if self.add_domain_rand and len(self.rand_init_state_indices) > 1:
+        if len(self.rand_init_state_indices) > 1:
             random_init_idx = self.rand_init_state_indices[
                 jax.random.randint(rng, (), 0, len(self.rand_init_state_indices))
             ]
@@ -548,29 +910,45 @@ class MJXEnv(PipelineEnv):
         )
         qpos = state_ref["qpos"]
 
+        # Store the original position before applying random offsets
+        original_pos = qpos[:3].copy() if not self.fixed_base else None
+
         motor_pos_old = qpos[self.q_start_idx + self.motor_indices]
         joint_pos_old = qpos[self.q_start_idx + self.joint_indices]
         motor_pos_offset = jnp.zeros(self.nu, dtype=jnp.float32)
         joint_pos_offset = jnp.zeros(self.nu, dtype=jnp.float32)
 
+        # Default neck motor target (from reference pose); may be overwritten by randomization
+        state_info["neck_motor_target"] = motor_pos_old[self.neck_actuator_indices]
+
         if self.add_domain_rand and self.add_head_pose:
-            neck_joint_pos_offset = jax.random.uniform(
-                rng_neck,
-                (2,),
-                minval=self.joint_limits[self.neck_actuator_indices][:, 0],
-                maxval=self.joint_limits[self.neck_actuator_indices][:, 1],
+            # Neck yaw: ±75° (half of full range), pitch: full range
+            # Sample absolute positions (not offsets from default pose)
+            rng_neck_yaw, rng_neck_pitch = jax.random.split(rng_neck)
+            neck_yaw = jax.random.uniform(
+                rng_neck_yaw, (1,), minval=-1.309, maxval=1.309
+            )  # ±75°
+            neck_pitch = jax.random.uniform(
+                rng_neck_pitch,
+                (1,),
+                minval=self.joint_limits[self.neck_actuator_indices][1, 0],
+                maxval=self.joint_limits[self.neck_actuator_indices][1, 1],
             )
-            neck_motor_pos_offset = self.robot.neck_ik(neck_joint_pos_offset)
+            # Absolute target positions for neck
+            neck_joint_pos = jnp.concatenate([neck_yaw, neck_pitch])
+            neck_motor_pos = self.robot.neck_ik(neck_joint_pos)
+            # Compute offset from current pose for qpos initialization
             joint_pos_offset = joint_pos_offset.at[self.neck_actuator_indices].set(
-                neck_joint_pos_offset
+                neck_joint_pos - joint_pos_old[self.neck_actuator_indices]
             )
             motor_pos_offset = motor_pos_offset.at[self.neck_actuator_indices].set(
-                neck_motor_pos_offset
+                neck_motor_pos - motor_pos_old[self.neck_actuator_indices]
             )
+            # Store absolute position for use as motor target during step
+            # (zero_point_offset for neck is used as absolute target, not offset)
+            state_info["neck_motor_target"] = neck_motor_pos
             qpos = qpos.at[self.q_start_idx + self.neck_passive_dof_indices].set(
-                jnp.repeat(
-                    -neck_joint_pos_offset[1:], len(self.neck_passive_dof_indices)
-                )
+                jnp.repeat(-neck_joint_pos[1:], len(self.neck_passive_dof_indices))
             )
 
         if not self.fixed_base and self.add_domain_rand:
@@ -680,10 +1058,10 @@ class MJXEnv(PipelineEnv):
         qpos = qpos.at[self.q_start_idx + self.joint_indices].set(
             joint_pos_old + joint_pos_offset
         )
-        # state_info["zero_point_offset"] = motor_pos_offset
+        state_info["zero_point_offset"] = motor_pos_offset
 
         # Sample random spawn location if enabled
-        if not self.fixed_base:
+        if not self.fixed_base and self.cfg.terrain.scene is None:
             if self.random_spawn:
                 idx = jax.random.randint(rng_spawn, (), 0, len(self.safe_spawns))
                 safe_spawns_jax = jax.tree_util.tree_map(
@@ -708,7 +1086,108 @@ class MJXEnv(PipelineEnv):
 
             qpos = qpos.at[:3].add(pos)
 
+        # Apply obstacle randomization offsets if enabled
+        if not self.fixed_base and self.cfg.obstacle_rand.enabled:
+            spawn_y_offsets = jnp.array(self.cfg.obstacle_rand.spawn_y_offsets)
+            num_obstacles = len(spawn_y_offsets)
+            obstacle_idx = jax.random.randint(rng_obstacle, (), 0, num_obstacles)
+            spawn_y_offset = spawn_y_offsets[obstacle_idx]
+            qpos = qpos.at[1].add(spawn_y_offset)
+            state_info["spawn_y_offset"] = spawn_y_offset
+
+            # Apply Z offset if configured (for tasks where robot starts on obstacle)
+            if len(self.cfg.obstacle_rand.spawn_z_offsets) > 0:
+                spawn_z_offsets = jnp.array(self.cfg.obstacle_rand.spawn_z_offsets)
+                spawn_z_offset = spawn_z_offsets[obstacle_idx]
+                qpos = qpos.at[2].add(spawn_z_offset)
+                state_info["spawn_z_offset"] = spawn_z_offset
+
+        # Apply random position and orientation offsets if domain randomization is enabled
+        if not self.fixed_base and self.add_domain_rand:
+            # Random position offset in x,y
+            if self.rand_pos_offset[0] > 0.0 or self.rand_pos_offset[1] > 0.0:
+                rng_pos_x, rng_pos_y = jax.random.split(rng_pos_offset, 2)
+                pos_offset_x = jax.random.uniform(
+                    rng_pos_x,
+                    (),
+                    minval=-self.rand_pos_offset[0],
+                    maxval=self.rand_pos_offset[0],
+                )
+                pos_offset_y = jax.random.uniform(
+                    rng_pos_y,
+                    (),
+                    minval=-self.rand_pos_offset[1],
+                    maxval=self.rand_pos_offset[1],
+                )
+                qpos = qpos.at[0].add(pos_offset_x)
+                qpos = qpos.at[1].add(pos_offset_y)
+
+            # Random yaw orientation offset
+            if self.rand_yaw_offset > 0.0:
+                yaw_offset = jax.random.uniform(
+                    rng_quat_offset,
+                    (),
+                    minval=-self.rand_yaw_offset,
+                    maxval=self.rand_yaw_offset,
+                )
+                # Get current torso orientation and add yaw offset
+                current_quat_wxyz = qpos[3:7]  # [w,x,y,z] format
+                current_quat_xyzw = jnp.concatenate(
+                    [current_quat_wxyz[1:], current_quat_wxyz[:1]]
+                )
+                current_rot = R.from_quat(current_quat_xyzw)
+                yaw_rot = R.from_euler("z", yaw_offset)
+                new_rot = yaw_rot * current_rot
+                new_quat_xyzw = new_rot.as_quat()
+                new_quat_wxyz = jnp.concatenate([new_quat_xyzw[3:], new_quat_xyzw[:3]])
+                qpos = qpos.at[3:7].set(new_quat_wxyz)
+
+        # Update state_ref if random offsets were applied to ensure consistent tracking
+        if not self.fixed_base and self.add_domain_rand and (original_pos is not None):
+            if (
+                self.rand_pos_offset[0] > 0.0 or self.rand_pos_offset[1] > 0.0
+            ) or self.rand_yaw_offset > 0.0:
+                # Get the robot's actual position and orientation after randomization
+                actual_pos = qpos[:3]
+                actual_quat_wxyz = qpos[3:7]
+                actual_quat_xyzw = jnp.concatenate(
+                    [actual_quat_wxyz[1:], actual_quat_wxyz[:1]]
+                )
+                actual_rot = R.from_quat(actual_quat_xyzw)
+
+                # Re-compute state_ref with the robot's actual initial pose
+                try:
+                    state_ref = self.motion_ref.get_state_ref(
+                        0.0,
+                        command,
+                        state_ref,
+                        state_info["init_idx"],
+                        torso_yaw=None,
+                        direction_idx=None,
+                        robot_init_pos=actual_pos,
+                        robot_init_rot=actual_rot,
+                    )
+                except TypeError:
+                    # Random offsets not used, no changes needed
+                    pass
+
+        # Initialize qvel from reference motion for RSI (Reference State Initialization)
         qvel = jnp.zeros(self.nv)
+        if not self.fixed_base:
+            # For free-floating robot, set root velocities from reference
+            torso_lin_vel = state_ref["body_lin_vel"][0]  # Torso linear velocity (3,)
+            torso_ang_vel = state_ref["body_ang_vel"][0]  # Torso angular velocity (3,)
+            qvel = qvel.at[:3].set(torso_lin_vel)
+            qvel = qvel.at[3:6].set(torso_ang_vel)
+        # Set motor and joint velocities from reference (if available, else stays zero)
+        if getattr(self.motion_ref, "has_motor_vel", False):
+            qvel = qvel.at[self.qd_start_idx + self.motor_indices].set(
+                state_ref["motor_vel"]
+            )
+        if getattr(self.motion_ref, "has_joint_vel", False):
+            qvel = qvel.at[self.qd_start_idx + self.joint_indices].set(
+                state_ref["joint_vel"]
+            )
 
         pipeline_state = self.pipeline_init(qpos, qvel)
 
@@ -736,7 +1215,17 @@ class MJXEnv(PipelineEnv):
             state_info["phase_signal"] = self.motion_ref.get_phase_signal(0.0)
 
         state_info["feet_height_init"] = pipeline_state.x.pos[self.feet_link_ids, 2]
-        state_info["default_action"] = motor_pos_old[self.action_mask].copy()
+        if "get_up_" in self.name:
+            state_info["default_action"] = jnp.mean(self.action_limits, axis=1)
+        else:
+            # Use first frame motor_pos for default_action (not random init frame for RSI)
+            first_frame_ref = self.motion_ref.get_state_ref(
+                0.0, command, self.motion_ref.get_default_state(), init_idx=0
+            )
+            state_info["default_action"] = first_frame_ref["motor_pos"][
+                self.action_mask
+            ].copy()
+
         state_info["last_action_target"] = state_info["default_action"].copy()
         state_info["actuator_noise"] = {}
 
@@ -747,6 +1236,65 @@ class MJXEnv(PipelineEnv):
                 minval=self.backlash_range[0],
                 maxval=self.backlash_range[1],
             )
+
+            # Sample persistent torso calibration errors (affects physics throughout episode)
+            persistent_torso_pitch = jax.random.uniform(
+                rng_persistent_pitch,
+                (),
+                minval=self.persistent_torso_pitch_error_range[0],
+                maxval=self.persistent_torso_pitch_error_range[1],
+            )
+            persistent_torso_roll = jax.random.uniform(
+                rng_persistent_roll,
+                (),
+                minval=self.persistent_torso_roll_error_range[0],
+                maxval=self.persistent_torso_roll_error_range[1],
+            )
+
+            # Torso ROLL → waist motors
+            persistent_waist_joint = jnp.array([-persistent_torso_roll, 0.0])
+            persistent_waist_motor = self.robot.waist_ik(persistent_waist_joint)
+            state_info["persistent_waist_calibration_error"] = persistent_waist_motor
+
+            # Torso PITCH → distribute across leg pitch joints (hip, knee, ankle)
+            # Use SAME randomized distribution as initial torso_pitch_range
+            _, rng_hip_pitch_pers, rng_knee_pitch_pers = jax.random.split(
+                rng_persistent_pitch, 3
+            )
+            hip_pitch_delta_pers = jax.random.uniform(
+                rng_hip_pitch_pers,
+                (1,),
+                minval=0.0,
+                maxval=jnp.abs(persistent_torso_pitch),
+            )
+            knee_pitch_delta_pers = jax.random.uniform(
+                rng_knee_pitch_pers,
+                (1,),
+                minval=0.0,
+                maxval=jnp.abs(persistent_torso_pitch) - hip_pitch_delta_pers,
+            )
+            ankle_pitch_delta_pers = (
+                jnp.abs(persistent_torso_pitch)
+                - hip_pitch_delta_pers
+                - knee_pitch_delta_pers
+            )
+            leg_pitch_delta_pers = jnp.concatenate(
+                [
+                    hip_pitch_delta_pers,
+                    knee_pitch_delta_pers,
+                    ankle_pitch_delta_pers,
+                    hip_pitch_delta_pers,
+                    knee_pitch_delta_pers,
+                    ankle_pitch_delta_pers,
+                ]
+            )
+            leg_pitch_error_pers = (
+                leg_pitch_delta_pers
+                * self.leg_pitch_joint_signs
+                * jnp.sign(persistent_torso_pitch)
+            )
+            state_info["persistent_leg_pitch_error"] = leg_pitch_error_pers
+
             state_info["actuator_noise"] = {
                 "kp": jax.random.uniform(
                     rng_kp,
@@ -803,6 +1351,14 @@ class MJXEnv(PipelineEnv):
                     maxval=self.passive_active_ratio_range[1],
                 ),
             }
+        else:
+            # No domain randomization - zero calibration error
+            state_info["persistent_waist_calibration_error"] = jnp.zeros(
+                len(self.waist_actuator_indices)
+            )
+            state_info["persistent_leg_pitch_error"] = jnp.zeros(
+                len(self.leg_pitch_actuator_indices)
+            )
 
         obs_history = jnp.zeros(self.num_obs_history * self.obs_size)
         privileged_obs_history = jnp.zeros(
@@ -816,7 +1372,7 @@ class MJXEnv(PipelineEnv):
         )
         reward, done, zero = jnp.zeros(3)
 
-        metrics: Dict[str, Any] = {}
+        metrics: dict[str, Any] = {}
         for k in self.reward_names:
             metrics[k] = zero
 
@@ -867,6 +1423,83 @@ class MJXEnv(PipelineEnv):
             jax.random.split(state.info["rng"], 6)
         )
 
+        # Check if motion completed in previous step and teleport BEFORE computing anything
+        # This ensures obs/rewards are computed from the correct (teleported) state
+        should_teleport = (
+            state.info["step"] + state.info["init_idx"] >= self.episode_length
+        )
+
+        def do_teleport():
+            # Get qpos from frame 0 of the motion file
+            frame0_ref = self.motion_ref.get_state_ref(
+                0.0, state.info["command"], state.info["state_ref"], init_idx=0
+            )
+            frame0_qpos = frame0_ref["qpos"]
+            frame0_qvel = jnp.zeros(self.nv)  # Zero velocity at start of motion
+            new_pipeline_state = self.pipeline_init(frame0_qpos, frame0_qvel)
+            return (
+                new_pipeline_state,
+                frame0_ref,
+                0,
+            )  # pipeline_state, state_ref, init_idx
+
+        def no_teleport():
+            return (
+                state.pipeline_state,
+                state.info["state_ref"],
+                state.info["init_idx"],
+            )
+
+        pipeline_state_start, state_ref_start, init_idx_start = jax.lax.cond(
+            should_teleport, do_teleport, no_teleport
+        )
+
+        # Update state with potentially teleported values
+        state = state.replace(pipeline_state=pipeline_state_start)
+        state.info["state_ref"] = state_ref_start
+        state.info["init_idx"] = init_idx_start
+        # Reset motion step counter on teleport (motion restarts at frame 0)
+        # Note: EpisodeWrapper's episode length tracking uses state.info['steps'] (plural)
+        # so resetting our 'step' (singular) doesn't affect episode termination
+        state.info["step"] = jnp.where(should_teleport, 0, state.info["step"])
+        # Reset torso_height_max on teleport
+        state.info["torso_height_max"] = jnp.where(
+            should_teleport, 0.0, state.info["torso_height_max"]
+        )
+        # Clear history buffers on teleport to avoid stale data from previous motion cycle
+        zero_action_buffer = jnp.zeros((self.n_steps_delay + 1) * self.num_action)
+        state.info["action_buffer"] = jnp.where(
+            should_teleport, zero_action_buffer, state.info["action_buffer"]
+        )
+        state.info["last_act"] = jnp.where(
+            should_teleport, jnp.zeros(self.num_action), state.info["last_act"]
+        )
+        state.info["last_action_target"] = jnp.where(
+            should_teleport,
+            state.info["default_action"],
+            state.info["last_action_target"],
+        )
+        state.info["feet_air_time"] = jnp.where(
+            should_teleport, jnp.zeros(2), state.info["feet_air_time"]
+        )
+        state.info["feet_air_dist"] = jnp.where(
+            should_teleport, jnp.zeros(2), state.info["feet_air_dist"]
+        )
+        # Clear observation history buffers on teleport
+        zero_obs_history = jnp.zeros(self.num_obs_history * self.obs_size)
+        zero_privileged_obs_history = jnp.zeros(
+            self.num_privileged_obs_history * self.privileged_obs_size
+        )
+        new_obs = {
+            "state": jnp.where(should_teleport, zero_obs_history, state.obs["state"]),
+            "privileged_state": jnp.where(
+                should_teleport,
+                zero_privileged_obs_history,
+                state.obs["privileged_state"],
+            ),
+        }
+        state = state.replace(obs=new_obs)
+
         torso_quat = state.pipeline_state.x.rot[0]
         torso_quat_xyzw = jnp.concatenate([torso_quat[1:], torso_quat[:1]])
         torso_yaw = R.from_quat(torso_quat_xyzw).as_euler("xyz")[2]
@@ -898,6 +1531,7 @@ class MJXEnv(PipelineEnv):
             )
         except TypeError:
             # Fallback for motion references that don't support init_idx parameter
+            # NOTE: Seems like all LBF ref don't support init_idx which means using rsi will break phase signal?
             state.info["phase_signal"] = self.motion_ref.get_phase_signal(time_curr)
 
         state.info["action_buffer"] = (
@@ -936,8 +1570,20 @@ class MJXEnv(PipelineEnv):
         # Ground Truth Trajectory, only for debugging
         # motor_target = state_ref["motor_pos"]
 
-        # if self.add_domain_rand:
-        #     motor_target += state.info["zero_point_offset"]
+        if self.add_domain_rand and self.add_head_pose:
+            motor_target = motor_target.at[self.neck_actuator_indices].set(
+                state.info["neck_motor_target"]
+            )
+
+        # Apply persistent calibration errors (torso tilt persists throughout episode)
+        # Torso roll error → waist motors
+        motor_target = motor_target.at[self.waist_actuator_indices].add(
+            state.info["persistent_waist_calibration_error"]
+        )
+        # Torso pitch error → leg pitch joints (hip, knee, ankle)
+        motor_target = motor_target.at[self.leg_pitch_actuator_indices].add(
+            state.info["persistent_leg_pitch_error"]
+        )
 
         if self.add_push:
             # Check if we should start a new push
@@ -1011,24 +1657,31 @@ class MJXEnv(PipelineEnv):
 
         torso_pos = pipeline_state.x.pos[0]
         torso_height = torso_pos[2]
-        if not self.fixed_base:
-            # Convert world (x,y) to pixel (row, col)
-            col = (
-                (torso_pos[0] + self.total_width / 2) / self.total_width
-            ) * self.global_hmap.shape[1]
-            row = (
-                (torso_pos[1] + self.total_length / 2) / self.total_length
-            ) * self.global_hmap.shape[0]
-
-            # Clip to valid range
-            col = jnp.clip(col, 0, self.global_hmap.shape[1] - 1).astype(int)
-            row = jnp.clip(row, 0, self.global_hmap.shape[0] - 1).astype(int)
-            local_ground = self.global_hmap[row, col]
+        if not self.fixed_base and self.cfg.terrain.scene is None:
+            # Get terrain elevation at robot position using elevation function
+            local_ground = get_robot_ground_height(
+                torso_pos[0], torso_pos[1], self.elevation_info
+            )
             torso_height -= local_ground
 
-        done = jnp.logical_or(
-            torso_height < self.healthy_z_range[0],
-            torso_height > self.healthy_z_range[1],
+        if "get_up_" in self.name:
+            done = jnp.logical_or(
+                jnp.logical_or(
+                    torso_height - state_ref["qpos"][2] < self.healthy_z_range[0],
+                    torso_height - state_ref["qpos"][2] > self.healthy_z_range[1],
+                ),
+                torso_height - state.info["torso_height_max"] < -0.1,
+            )
+        else:
+            done = jnp.logical_or(
+                torso_height < self.healthy_z_range[0],
+                torso_height > self.healthy_z_range[1],
+            )
+
+        # TODO: Move check_termination to a separate function
+
+        state.info["torso_height_max"] = jnp.maximum(
+            torso_height, state.info["torso_height_max"]
         )
 
         # Prevent done for fixed base
@@ -1065,25 +1718,52 @@ class MJXEnv(PipelineEnv):
         state.info["rng"] = rng
         state.info["step"] += 1
 
+        # Check if command should be resampled
+        should_resample = state.info["step"] % self.resample_steps == 0
+
         state.info["command"] = jax.lax.cond(
-            state.info["step"] % self.resample_steps == 0,
+            should_resample,
             lambda: self._sample_command(cmd_rng, state.info["command"]),
             lambda: state.info["command"],
         )
+        """
+        # Reset path state when command is resampled to prevent tracing old commands
+        def reset_path_state():
+            # Get current robot position and orientation
+            current_pos = pipeline_state.x.pos[0]  # Torso position
+            current_quat_wxyz = pipeline_state.x.rot[0]  # Torso quaternion [w,x,y,z]
+            current_quat_xyzw = jnp.concatenate(
+                [current_quat_wxyz[1:], current_quat_wxyz[:1]]
+            )
+            current_rot = R.from_quat(current_quat_xyzw)
+
+            # Update state_ref with current robot pose
+            updated_state_ref = state.info["state_ref"].copy()
+            updated_state_ref["path_pos"] = current_pos
+            updated_state_ref["path_rot"] = current_rot
+            return updated_state_ref
+
+        state.info["state_ref"] = jax.lax.cond(
+            should_resample,
+            reset_path_state,
+            lambda: state.info["state_ref"],
+        )
+        """
+
         # Handle empty command_obs_indices gracefully (e.g., for DeepMimic)
         if len(self.command_obs_indices) > 0:
             state.info["command_obs"] = state.info["command"][self.command_obs_indices]
         else:
             state.info["command_obs"] = jnp.array([], dtype=jnp.float32)
 
-        # reset the state_ref when done (early termination) or when the episode length is reached
-        reset = done | (state.info["step"] >= self.episode_length)
+        # Reset state_ref on failure (internal timeout already handled at step start)
         state.info["state_ref"] = jax.tree_map(
-            lambda old, new: jnp.where(reset, new, old),
+            lambda old, new: jnp.where(done, new, old),
             state.info["state_ref"],
             state.info["first_state_ref"],
         )
-        state.info["step"] = jnp.where(reset, 0, state.info["step"])
+        # Reset step on failure (internal timeout keeps step counting)
+        state.info["step"] = jnp.where(done, 0, state.info["step"])
 
         state.metrics.update(reward_dict)
 
@@ -1155,10 +1835,10 @@ class MJXEnv(PipelineEnv):
 
     def render(
         self,
-        states: List[State],
+        states: list[State],
         height: int = 240,
         width: int = 320,
-        camera: Optional[str] = None,
+        camera: str | None = None,
     ):
         renderer = mujoco.Renderer(self.sys.mj_model, height=height, width=width)
         camera = camera or -1
@@ -1182,7 +1862,7 @@ class MJXEnv(PipelineEnv):
         return image_list
 
     def _sample_command(
-        self, rng: jax.Array, last_command: Optional[jax.Array] = None
+        self, rng: jax.Array, last_command: jax.Array | None = None
     ) -> jax.Array:
         raise NotImplementedError
 
@@ -1273,8 +1953,8 @@ class MJXEnv(PipelineEnv):
         rng: jax.Array,
         true_gyro: jax.Array,
         true_quat_wxyz: jax.Array,  # (4,) wxyz
-        imu_state: Tuple[jax.Array, jax.Array, jax.Array, jax.Array],
-    ) -> Tuple[jax.Array, jax.Array, Tuple[jax.Array, jax.Array, jax.Array, jax.Array]]:
+        imu_state: tuple[jax.Array, jax.Array, jax.Array, jax.Array],
+    ) -> tuple[jax.Array, jax.Array, tuple[jax.Array, jax.Array, jax.Array, jax.Array]]:
         # Gyro AR(1) + bias RW + optional white
         (
             _,
@@ -1349,7 +2029,7 @@ class MJXEnv(PipelineEnv):
         info: dict[str, Any],
         obs_history: jax.Array,
         privileged_obs_history: jax.Array,
-    ) -> Tuple[jax.Array, jax.Array]:
+    ) -> tuple[jax.Array, jax.Array]:
         """Generates and returns the current and privileged observations for the system.
 
         Args:
@@ -1365,13 +2045,25 @@ class MJXEnv(PipelineEnv):
 
         motor_pos = pipeline_state.q[self.q_start_idx + self.motor_indices]
         motor_vel = pipeline_state.qd[self.qd_start_idx + self.motor_indices]
-        motor_pos_delta = motor_pos - self.default_motor_pos
+
+        # Subtract persistent calibration errors from observations
+        # Physics has tilt, but encoders read commanded positions (not actual positions)
+        # Policy must learn to balance using IMU (torso_quat/ang_vel) instead of motor positions
+        motor_pos_corrected = motor_pos.copy()
+        motor_pos_corrected = motor_pos_corrected.at[self.waist_actuator_indices].add(
+            -info["persistent_waist_calibration_error"]
+        )
+        motor_pos_corrected = motor_pos_corrected.at[
+            self.leg_pitch_actuator_indices
+        ].add(-info["persistent_leg_pitch_error"])
+
+        motor_pos_delta = motor_pos_corrected - self.default_motor_pos
 
         torso_quat = pipeline_state.x.rot[0]
         torso_quat = jnp.where(torso_quat[0] < 0, -torso_quat, torso_quat)
         torso_ang_vel = get_local_vec(pipeline_state.xd.ang[0], torso_quat)
 
-        motor_pos_noisy = motor_pos.copy()
+        motor_pos_noisy = motor_pos_corrected.copy()
         motor_vel_noisy = motor_vel.copy()
         torso_quat_noisy = torso_quat.copy()
         torso_ang_vel_noisy = torso_ang_vel.copy()
@@ -1407,9 +2099,20 @@ class MJXEnv(PipelineEnv):
 
         motor_pos_delta_noisy = motor_pos_noisy - self.default_motor_pos
 
+        if self.use_phase_signal:
+            phase_info = info["phase_signal"]  # 2 dims
+        else:
+            # Reference motor states as motion phase
+            phase_info = jnp.concatenate(
+                [
+                    info["state_ref"]["motor_pos"],
+                    info["state_ref"]["motor_vel"],
+                ]
+            )  # 2*nu dims
+
         obs = jnp.concatenate(
             [
-                info["phase_signal"],
+                phase_info,
                 info["command_obs"],
                 motor_pos_delta_noisy * self.obs_scales.dof_pos,
                 motor_vel_noisy * self.obs_scales.dof_vel,
@@ -1423,9 +2126,21 @@ class MJXEnv(PipelineEnv):
         motor_pos_error = motor_pos - info["state_ref"]["motor_pos"]
         torso_lin_vel = get_local_vec(pipeline_state.xd.vel[0], torso_quat)
 
+        # Motion phase for privileged obs (same as actor obs)
+        if self.use_phase_signal:
+            phase_info_privileged = info["phase_signal"]  # 2 dims
+        else:
+            # BeyondMimic: reference motor states as motion phase
+            phase_info_privileged = jnp.concatenate(
+                [
+                    info["state_ref"]["motor_pos"],
+                    info["state_ref"]["motor_vel"],
+                ]
+            )  # 2*nu dims
+
         privileged_obs = jnp.concatenate(
             [
-                info["phase_signal"],
+                phase_info_privileged,
                 info["command_obs"],
                 motor_pos_delta * self.obs_scales.dof_pos,
                 motor_vel * self.obs_scales.dof_vel,
@@ -1444,13 +2159,16 @@ class MJXEnv(PipelineEnv):
         )
         # jax.debug.breakpoint()
 
-        # stack observations through time
-        obs = jnp.roll(obs_history, obs.size).at[: obs.size].set(obs)
-        privileged_obs = (
-            jnp.roll(privileged_obs_history, privileged_obs.size)
-            .at[: privileged_obs.size]
-            .set(privileged_obs)
-        )
+        # Stack observations through time (controlled by frame_stack config)
+        # Note: frame_stack=1 means no history
+        if self.num_obs_history > 1:
+            obs = jnp.roll(obs_history, obs.size).at[: obs.size].set(obs)
+        if self.num_privileged_obs_history > 1:
+            privileged_obs = (
+                jnp.roll(privileged_obs_history, privileged_obs.size)
+                .at[: privileged_obs.size]
+                .set(privileged_obs)
+            )
 
         return {"state": obs, "privileged_state": privileged_obs}, info
 
@@ -1485,14 +2203,14 @@ class MJXEnv(PipelineEnv):
         )
 
         reward_arr = jax.lax.map(
-            lambda i: jax.lax.switch(
-                i, self.reward_functions, pipeline_state, info, action
-            )
-            * resolved_scales[i],
+            lambda i: (
+                jax.lax.switch(i, self.reward_functions, pipeline_state, info, action)
+                * resolved_scales[i]
+            ),
             indices,
         )
 
-        reward_dict: Dict[str, jax.Array] = {}
+        reward_dict: dict[str, jax.Array] = {}
         for i, name in enumerate(self.reward_names):
             reward_dict[name] = reward_arr[i]
 
@@ -1545,6 +2263,9 @@ class MJXEnv(PipelineEnv):
         """
         torso_pos = pipeline_state.qpos[:2]
         torso_pos_ref = info["state_ref"]["qpos"][:2]
+        # Apply spawn Y offset for obstacle randomization
+        spawn_y_offset = info.get("spawn_y_offset", 0.0)
+        torso_pos_ref = torso_pos_ref.at[1].add(spawn_y_offset)
         error = jnp.linalg.norm(torso_pos - torso_pos_ref, axis=-1)
         reward = jnp.exp(-self.pos_tracking_sigma * error**2)
         return reward
@@ -1572,6 +2293,9 @@ class MJXEnv(PipelineEnv):
         """
         torso_height = pipeline_state.qpos[2]
         torso_height_ref = info["state_ref"]["qpos"][2]
+        # Apply spawn Z offset for obstacle randomization
+        spawn_z_offset = info.get("spawn_z_offset", 0.0)
+        torso_height_ref = torso_height_ref + spawn_z_offset
         error = torso_height - torso_height_ref
         reward = jnp.exp(-self.pos_tracking_sigma * error**2)
         return reward
@@ -1670,6 +2394,45 @@ class MJXEnv(PipelineEnv):
         error = jnp.linalg.norm(ang_vel_xy - ang_vel_xy_ref, axis=-1)
         reward = jnp.exp(-self.ang_vel_tracking_sigma * error**2)
         return reward
+
+    def _reward_penalty_ang_vel_xy(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ):
+        """Penalize angular velocity in the XY plane (roll/pitch rate).
+
+        Matches holosoma's penalty_ang_vel_xy: returns negative sum of squared
+        angular velocities in xy. Use with positive weight in config.
+
+        Args:
+            pipeline_state (base.State): The current state of the system.
+            info (dict[str, Any]): Additional state information (unused).
+            action (jax.Array): The action taken (unused).
+
+        Returns:
+            jax.Array: Negative sum of squared xy angular velocities.
+        """
+        ang_vel_local = get_local_vec(pipeline_state.xd.ang[0], pipeline_state.x.rot[0])
+        return -jnp.sum(jnp.square(ang_vel_local[:2]))
+
+    def _reward_penalty_orientation(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ):
+        """Penalize non-flat base orientation (roll/pitch).
+
+        Matches holosoma's penalty_orientation: projects gravity into base frame
+        and penalizes xy components. When upright, gravity in base frame is [0,0,-1].
+
+        Args:
+            pipeline_state (base.State): The current state of the system.
+            info (dict[str, Any]): Additional state information (unused).
+            action (jax.Array): The action taken (unused).
+
+        Returns:
+            jax.Array: Negative sum of squared projected gravity xy components.
+        """
+        gravity_world = jnp.array([0.0, 0.0, -1.0])
+        projected_gravity = get_local_vec(gravity_world, pipeline_state.x.rot[0])
+        return -jnp.sum(jnp.square(projected_gravity[:2]))
 
     def _reward_ang_vel_z(
         self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
@@ -1894,6 +2657,93 @@ class MJXEnv(PipelineEnv):
         reward = -jnp.mean(error)
         return reward
 
+    def _reward_penalty_action_rate(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Penalize changes in actions between steps (sum version).
+
+        Matches holosoma's penalty_action_rate: returns negative sum of squared
+        action differences. Use with positive weight in config.
+
+        Args:
+            pipeline_state (base.State): The current state of the pipeline (unused).
+            info (dict[str, Any]): A dictionary containing the last action taken.
+            action (jax.Array): The current action array.
+
+        Returns:
+            jax.Array: Negative sum of squared action changes.
+        """
+        return -jnp.sum(jnp.square(action - info["last_act"]))
+
+    def _reward_penalty_pose(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Penalize deviation from default pose for controlled joints.
+
+        Matches holosoma's pose reward but only for action_parts (controlled DOFs).
+        Returns negative weighted sum of squared position errors from default pose.
+        Weights are configurable via RewardsConfig.pose_weights (defaults to uniform 1.0).
+
+        Args:
+            pipeline_state (base.State): The current state of the pipeline.
+            info (dict[str, Any]): A dictionary containing episode information.
+            action (jax.Array): The current action array.
+
+        Returns:
+            jax.Array: Negative weighted sum of squared pose errors for controlled joints.
+        """
+        # Get current motor positions for controlled joints only
+        motor_pos = pipeline_state.q[self.q_start_idx + self.motor_indices]
+        controlled_motor_pos = motor_pos[self.action_mask]
+
+        # Get default positions for controlled joints
+        default_controlled_pos = self.default_motor_pos[self.action_mask]
+
+        # Calculate weighted squared errors
+        pose_error = jnp.square(controlled_motor_pos - default_controlled_pos)
+        weighted_error = pose_error * self.pose_weights
+
+        # Penalize deviation from default
+        return -jnp.sum(weighted_error)
+
+    def _reward_penalty_close_feet_xy(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Penalize when feet are too close together in xy plane.
+
+        Matches holosoma's penalty_close_feet_xy: returns -1.0 if lateral distance
+        between feet (perpendicular to forward direction) is below threshold.
+
+        Args:
+            pipeline_state (base.State): The current state of the pipeline.
+            info (dict[str, Any]): A dictionary containing episode information.
+            action (jax.Array): The current action array.
+
+        Returns:
+            jax.Array: -1.0 if feet too close, 0.0 otherwise.
+        """
+        # Get feet positions
+        left_foot_pos = pipeline_state.x.pos[self.feet_link_ids[0]]
+        right_foot_pos = pipeline_state.x.pos[self.feet_link_ids[1]]
+
+        # Get base forward direction from quaternion
+        base_quat = pipeline_state.x.rot[0]
+        forward_local = jnp.array([1.0, 0.0, 0.0])
+        base_forward = R.from_quat(
+            jnp.concatenate([base_quat[1:], base_quat[:1]])
+        ).apply(forward_local)
+        base_yaw = jnp.arctan2(base_forward[1], base_forward[0])
+
+        # Calculate perpendicular (lateral) distance in base-local coordinates
+        feet_diff = left_foot_pos[:2] - right_foot_pos[:2]
+        feet_lateral_dist = jnp.abs(
+            jnp.cos(base_yaw) * feet_diff[1] - jnp.sin(base_yaw) * feet_diff[0]
+        )
+
+        # Return penalty when feet are too close
+        too_close = feet_lateral_dist < self.close_feet_threshold
+        return jnp.where(too_close, -1.0, 0.0)
+
     def _reward_survival(
         self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
     ) -> jax.Array:
@@ -1912,6 +2762,24 @@ class MJXEnv(PipelineEnv):
             jax.Array: A float32 array representing the survival reward.
         """
         return -info["done"].astype(jnp.float32)
+
+    def _reward_alive(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Constant reward for staying alive.
+
+        Matches holosoma's alive reward: returns 1.0 every timestep.
+        This provides a dense signal encouraging longer episodes.
+
+        Args:
+            pipeline_state (base.State): The current state of the pipeline (unused).
+            info (dict[str, Any]): A dictionary containing episode information (unused).
+            action (jax.Array): The action taken at the current step (unused).
+
+        Returns:
+            jax.Array: 1.0 constant reward.
+        """
+        return jnp.float32(1.0)
 
     # DeepMimic specific reward functions; make sure to have _init_site_indices() in your custom env to have site tracking
     def _reward_body_quat(
@@ -2067,6 +2935,13 @@ class MJXEnv(PipelineEnv):
         # Site-based end-effector position tracking using recorded site data
         site_pos_world = pipeline_state.site_xpos  # World frame site positions
         site_pos_ref = info["state_ref"]["site_pos"]  # Reference site positions
+
+        # Apply spawn offsets for obstacle randomization (only in global frame mode)
+        if not self.is_robot_relative_frame:
+            spawn_y_offset = info.get("spawn_y_offset", 0.0)
+            spawn_z_offset = info.get("spawn_z_offset", 0.0)
+            position_offset = jnp.array([0.0, spawn_y_offset, spawn_z_offset])
+            site_pos_ref = site_pos_ref + position_offset
 
         # Compute position error for the 4 recorded end-effector sites
         total_loss = 0.0

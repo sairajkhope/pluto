@@ -51,6 +51,7 @@ dependencies = [
     "pytest",
     "pyserial",
     "PySide6",
+    "trimesh",
     "rsl-rl-lib==2.3.3",
     "scipy",
     "seaborn",
@@ -59,6 +60,7 @@ dependencies = [
     "soxr",
     "textual",
     "tqdm",
+    "robot-keyframe-kit",
     "wandb",
     "zmq",
     "dynamixel-sdk"
@@ -70,7 +72,7 @@ test = ["torch==2.3.1", "torchvision==0.18.1"]
 linux = ["jax[cuda12]==0.4.28", "pynput", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"]
 macos = ["torch==2.3.1", "torchvision==0.18.1"]
 windows = ["torch==2.3.1", "torchvision==0.18.1"]
-jetson = ["Jetson.GPIO", "pyaudio", "pydub"]
+jetson = ["Jetson.GPIO", "pyaudio", "pydub", "cuda-python", "pycuda", "pytools"]
 
 [tool.scikit-build]
 wheel.packages = ["toddlerbot"]  # builds C++ extensions into this package

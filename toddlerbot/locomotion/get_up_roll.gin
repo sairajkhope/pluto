@@ -1,0 +1,63 @@
+PPOConfig.episode_length = 200
+
+SimConfig.self_contact_pairs = [
+    ["left_hip_yaw_link_collision", "left_hand_collision"],
+    ["right_hip_yaw_link_collision", "right_hand_collision"],
+    ["left_ankle_pitch_link_collision", "right_ankle_pitch_link_collision"],
+    ["left_knee_link_collision", "right_knee_link_collision"],
+    ["pelvis_link_collision", "left_elbow_yaw_link_collision"],
+    ["pelvis_link_collision", "right_elbow_yaw_link_collision"],
+    ["torso_collision_0", "left_shoulder_yaw_link_collision"],
+    ["torso_collision_0", "right_shoulder_yaw_link_collision"],
+    ["head_collision", "left_elbow_yaw_link_collision"],
+    ["head_collision", "right_elbow_yaw_link_collision"]
+]
+TerrainConfig.robot_collision_geom_names = [
+    "left_ankle_roll_link_collision",
+    "right_ankle_roll_link_collision",
+    "left_ankle_pitch_link_collision",
+    "right_ankle_pitch_link_collision",
+    "left_hip_pitch_link_collision",
+    "right_hip_pitch_link_collision",
+    "left_hip_yaw_link_collision",
+    "right_hip_yaw_link_collision",
+    "left_shoulder_roll_link_collision",
+    "right_shoulder_roll_link_collision",
+    "left_elbow_roll_link_collision",
+    "right_elbow_roll_link_collision",
+    "left_elbow_yaw_link_collision",
+    "right_elbow_yaw_link_collision",
+    "left_hand_collision",
+    "right_hand_collision",
+    "head_collision",
+    "torso_collision_0",
+    "torso_collision_1",
+    "pelvis_link_collision",
+]
+
+# Action parameters
+ActionConfig.action_parts = ['leg', 'arm', 'waist', 'neck']
+
+# Observation parameters
+ObsConfig.num_single_obs = 100
+ObsConfig.num_single_privileged_obs = 143
+
+# Command parameters
+CommandsConfig.command_obs_indices = [0]
+CommandsConfig.command_range = [[-1.0, 1.0]]
+CommandsConfig.deadzone = [0.1]
+
+# Reward parameters
+RewardsConfig.healthy_z_range = [-0.05, 0.05] # this is the delta to the reference torso z
+
+# Reward scales
+RewardScales.torso_quat = 1.0
+RewardScales.motor_pos = 5.0
+RewardScales.motor_torque = 1.0 # {‘0’: 0.0, ‘100000000’: 1.0}
+RewardScales.energy = 1.0 # {‘0’: 0.0, ‘100000000’: 0.1}
+RewardScales.survival = 0.0 # 10.0
+RewardScales.body_quat = 5.0
+RewardScales.site_pos = 5.0
+RewardScales.body_lin_vel = 0.5
+RewardScales.body_ang_vel = 0.5
+RewardScales.collision = 0.1

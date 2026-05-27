@@ -1,32 +1,144 @@
+PPOConfig.episode_length = 1000
+PPOConfig.num_timesteps = 1000_000_000
+
+# Terrain configuration
+# Single flat tile (default for walking)
+TerrainConfig.manual_map = [["flat"]]
+TerrainConfig.random_spawn = False  # Spawn at center (deterministic)
+
+# Example multi-terrain setup (uncomment to use):
+# TerrainConfig.manual_map = [
+#     ["bumps", "slope", "bumps"],
+#     ["slope", "rough", "stairs"],
+#     ["rough", "stairs", "rough"]
+# ]
+# TerrainConfig.random_spawn = True  # Random spawn across tiles
+
+ActionConfig.action_parts = ['leg']
+# ActionConfig.action_parts = ['leg', 'waist']
+ActionConfig.cycle_time = 0.72
+
+# Observation parameters
+# Note: last_act size depends on action_parts. With action_parts=['leg'], last_act=12.
+#
+# Option 1: Phase signal (use_phase_signal=True, default) with action_parts=['leg'] (12 actions)
+#   num_single_obs = 2 (phase) + 3 (cmd) + 30 (motor_pos) + 30 (motor_vel) + 12 (last_act) + 3 (ang_vel) + 4 (quat) = 84
+#   num_single_privileged_obs = 84 + 30 (motor_pos_error) + 3 (lin_vel) + 30 (actuator_force) + 2 (stance) + 2 (ref_stance) = 151
+ObsConfig.num_single_obs = 84
+ObsConfig.num_single_privileged_obs = 151
+# with info["push"] included in privileged obs: 
+# ObsConfig.num_single_privileged_obs = 153
+
+# Option 2: Motion phase (use_phase_signal=False) with action_parts=['leg'] (12 actions)
+#   num_single_obs = 24 (ref_motor_pos+vel for 12 joints) + 3 (cmd) + 30 (motor_pos) + 30 (motor_vel) + 12 (last_act) + 3 (ang_vel) + 4 (quat) = 106
+#   num_single_privileged_obs = 106 + 30 (motor_pos_error) + 3 (lin_vel) + 30 (actuator_force) + 2 (stance) + 2 (ref_stance) = 173
+# ObsConfig.use_phase_signal = False
+# ObsConfig.num_single_obs = 106
+# ObsConfig.num_single_privileged_obs = 173
+
+# ObsConfig.frame_stack = 1
+# ObsConfig.c_frame_stack = 15
+
 CommandsConfig.command_range = [
     [-1.0, 1.0],
     [-1.0, 1.0],
     [0.0, 1.0],
     [-1.0, 1.0],
     [-1.0, 1.0],
-    [-0.2, 0.3],
     [-0.1, 0.1],
+    [-0.05, 0.05],
     [-1.0, 1.0]
 ]
 CommandsConfig.deadzone = [0.05, 0.05, 0.2]
 CommandsConfig.command_obs_indices = [5, 6, 7]
 
-RewardScales.torso_pos_xy = 2.0
-RewardScales.torso_quat = 5.0
-RewardScales.torso_roll = 0.5
-RewardScales.torso_pitch = 0.5
-RewardScales.lin_vel_xy = 5.0
-RewardScales.lin_vel_z = 1.0
-RewardScales.ang_vel_xy = 2.0
-RewardScales.ang_vel_z = 5.0
-RewardScales.motor_pos = 5.0
-RewardScales.motor_torque = 0.1
-RewardScales.energy = 0.01
-RewardScales.action_rate = 1.0
-RewardScales.feet_contact = 1.0
-RewardScales.collision = 0.1
-RewardScales.survival = 10.0
-RewardScales.feet_air_time = 500.0
-RewardScales.feet_distance = 1.0
-RewardScales.feet_slip = 0.05
-RewardScales.feet_clearance = 1.0
+# RewardScales.torso_pos_xy = 1.0
+# RewardScales.torso_quat = 5.0
+# RewardScales.torso_roll = 0.5
+# RewardScales.torso_pitch = 0.5
+# RewardScales.lin_vel_xy = 5.0
+# RewardScales.lin_vel_z = 1.0
+# RewardScales.ang_vel_xy = 2.0
+# RewardScales.ang_vel_z = 5.0
+# RewardScales.motor_pos = 5.0
+# RewardScales.motor_torque = 0.5
+# RewardScales.energy = 0.05
+# RewardScales.action_rate = 1.0
+# RewardScales.feet_contact = 1.0
+# RewardScales.collision = 0.1
+# RewardScales.survival = 10.0
+# RewardScales.feet_air_time = 500.0
+# RewardScales.feet_distance = 1.0
+# RewardScales.feet_slip = 0.05
+# RewardScales.feet_clearance = 1.0
+# RewardScales.hip_yaw = 1.0
+
+# # Dense foot-height tracking reward (replaces sparse feet_air_time/feet_clearance)
+# RewardsConfig.swing_height = 0.05  # Meters
+# RewardScales.feet_phase = 50.0
+# RewardScales.penalty_feet_ori = 7.5  # Prevent tippy-toe (keep feet flat)
+
+# # Command-following rewards (path integration)
+# RewardScales.torso_pos_xy = 10.0 #1.0
+# RewardScales.torso_quat = 7.5 #5.0
+# RewardScales.lin_vel_xy = 2.0 #5.0
+# RewardScales.ang_vel_z = 1.5 #5.0
+
+# # Stabilization rewards
+# RewardScales.torso_roll = 0.0 #0.5
+# RewardScales.torso_pitch = 0.0 #0.5
+# RewardScales.ang_vel_xy = 1.0 #2.0
+# RewardScales.lin_vel_z = 0.0 #1.0
+
+# # Regularization rewards
+# RewardScales.motor_torque = 0.5
+# RewardScales.energy = 0.05
+# RewardScales.action_rate = 2.0 #1.0
+# RewardScales.collision = 0.1
+# RewardScales.survival = 10.0
+# RewardsConfig.max_feet_xy_dist = 0.15
+# RewardScales.feet_xy_distance = 10.0 #1.0
+# RewardScales.hip_yaw = 1.0 #1.0
+
+# # Disabled ZMP-dependent and sparse rewards
+# RewardScales.motor_pos = 0.0  # ZMP-specific (joint angle tracking)
+# RewardScales.feet_air_time = 0.0  # Sparse (replaced by feet_phase)
+# RewardScales.feet_clearance = 0.0  # Sparse (replaced by feet_phase)
+# RewardScales.feet_contact = 0.0  #1.0
+# RewardScales.feet_slip = 0.0  #0.5
+
+# Without ZMP reference motion:
+RewardScales.lin_vel_xy = 2.0
+RewardsConfig.lin_vel_tracking_sigma = 1000.0
+RewardScales.ang_vel_z = 1.5
+RewardsConfig.ang_vel_tracking_sigma = 4.0
+RewardScales.penalty_ang_vel_xy = 1.0
+#RewardScales.penalty_orientation = 10.0 # Penalize tilt from upright
+RewardScales.torso_quat = 2.5
+#RewardScales.torso_pos_xy = 5.0
+RewardScales.penalty_action_rate = 2.0 # Sum of squared action changes
+RewardScales.penalty_pose = 0.5  # Penalize controlled joints deviating from default
+# Pose weights for 12 leg joints (must match action_parts=['leg']):
+# Order: left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee, left_ankle_roll, left_ankle_pitch,
+#        right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, right_ankle_roll, right_ankle_pitch
+RewardsConfig.pose_weights = [0.01, 1.0, 5.0, 0.01, 5.0, 5.0, 0.01, 1.0, 5.0, 0.01, 5.0, 5.0]
+RewardsConfig.close_feet_threshold = 0.06  # 6cm lateral distance between feet
+RewardScales.penalty_close_feet_xy = 10.0  # Penalize feet crossing/too close
+RewardScales.alive = 1.0  # Constant reward per timestep for staying alive)
+RewardScales.feet_phase = 7.5  # Foot height tracking during swing)
+RewardScales.penalty_feet_ori = 5.0  # Penalize tippy-toe, keep feet flat
+RewardsConfig.swing_height = 0.04  # Meters
+RewardsConfig.feet_phase_tracking_sigma = 0.0007  # Scaled for swing_height=0.03 (0.8 * 0.03²)
+
+# Domain randomization
+DomainRandConfig.add_head_pose = True
+# DomainRandConfig.add_push = True
+
+# Optional: Harsher domain randomization for better sim-to-real robustness
+# DomainRandConfig.torso_pitch_range = [-0.2, 0.2]  # ±11.5° (default: ±5.7°) - TRANSIENT (initial pose only)
+# DomainRandConfig.torso_roll_range = [-0.15, 0.15]  # ±8.6° (default: ±5.7°) - TRANSIENT (initial pose only)
+
+# Persistent calibration errors (affects physics throughout entire episode)
+# These simulate miscalibrated motors where torso stays tilted during motion
+# DomainRandConfig.persistent_torso_pitch_error_range = [-0.05, 0.05]
+# DomainRandConfig.persistent_torso_roll_error_range = [-0.025, 0.025]

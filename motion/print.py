@@ -26,6 +26,8 @@ NEW_FORMAT_KEYS = [
     "site_quat",
     "body_lin_vel",
     "body_ang_vel",
+    "motor_vel",
+    "joint_vel",
 ]
 
 # Old format keys (for backward compatibility)
@@ -103,7 +105,7 @@ def inspect_motion_file(name):
         # === Sequence info ===
         print("\n== Sequence info ==")
         sequence = data.get("timed_sequence", [])
-        print(f"Sequence length: {len(sequence)}")
+        print(f"Sequence length: {sequence[-1][-1]} seconds")
         if len(sequence) > 0:
             print(f"First sequence item: {sequence[0]}")
 
@@ -136,6 +138,40 @@ def inspect_motion_file(name):
                     print(f"Shape of first: {actions[0].shape}")
             if hasattr(actions, "dtype"):
                 print(f"Action data type: {actions.dtype}")
+
+        # === Motor velocity (optional, new data for policy observation) ===
+        print("\n== Motor Velocity Data ==")
+        if "motor_vel" in data:
+            motor_vel = data.get("motor_vel", [])
+            print(f"Length: {len(motor_vel)}")
+            if len(motor_vel) > 0:
+                if hasattr(motor_vel, "shape"):
+                    print(f"Motor vel array shape: {motor_vel.shape}")
+                    if len(motor_vel.shape) > 1:
+                        print(f"Individual motor vel shape: {motor_vel[0].shape}")
+                elif hasattr(motor_vel[0], "shape"):
+                    print(f"Shape of first: {motor_vel[0].shape}")
+            if hasattr(motor_vel, "dtype"):
+                print(f"Motor vel data type: {motor_vel.dtype}")
+        else:
+            print("No motor velocity data found (new data for policy observation)")
+
+        # === Joint velocity (optional, new data for qvel reconstruction) ===
+        print("\n== Joint Velocity Data ==")
+        if "joint_vel" in data:
+            joint_vel = data.get("joint_vel", [])
+            print(f"Length: {len(joint_vel)}")
+            if len(joint_vel) > 0:
+                if hasattr(joint_vel, "shape"):
+                    print(f"Joint vel array shape: {joint_vel.shape}")
+                    if len(joint_vel.shape) > 1:
+                        print(f"Individual joint vel shape: {joint_vel[0].shape}")
+                elif hasattr(joint_vel[0], "shape"):
+                    print(f"Shape of first: {joint_vel[0].shape}")
+            if hasattr(joint_vel, "dtype"):
+                print(f"Joint vel data type: {joint_vel.dtype}")
+        else:
+            print("No joint velocity data found (new data for qvel reconstruction)")
 
         # === Qpos ===
         print("\n== Qpos Replay ==")

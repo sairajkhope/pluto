@@ -72,11 +72,13 @@ class ZMPWalk:
             [0, 0, self.robot.config["robot"]["hip_to_ankle_roll_z"]], dtype=np.float32
         )
 
-        self.com_z = (
-            robot.config["kinematics"]["zero_pos"][2]
-            + robot.config["kinematics"]["home_pos_z_delta"]
-        )
-        self.default_target_z = -robot.config["kinematics"]["home_pos_z_delta"]
+        # Compute home_pos_z_delta from new config values (home_qpos_xyz - zero_pos)
+        zero_z = robot.config["kinematics"]["zero_pos"][2]
+        home_z = robot.config["kinematics"]["home_qpos_xyz"][2]
+        home_pos_z_delta = home_z - zero_z
+
+        self.com_z = zero_z + home_pos_z_delta  # = home_z
+        self.default_target_z = -home_pos_z_delta
         self.zmp_planner = ZMPPlanner()
 
     def build_lookup_table(

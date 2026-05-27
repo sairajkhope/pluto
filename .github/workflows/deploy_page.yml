@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # (Optional) Free up space on the runner
+      # Free up space on the runner
       - name: Free disk space
         run: |
           sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet || true
@@ -35,14 +35,25 @@ jobs:
             docs/requirements.txt
             pyproject.toml
 
-      - name: Install docs dependencies only
+      # Install dependencies for video rendering
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-glx libglew-dev libosmesa6-dev
+
+      - name: Install Python dependencies
         run: |
           python -m pip install -U pip wheel setuptools
-          # Prefer a tiny docs requirements file (recommended)
           pip install -r docs/requirements.txt
-          pip install -e . --no-deps
-          # OR if you have a docs extra:
-          # pip install .[docs] -c docs/constraints.txt
+          pip install -e .
+
+      # Render motion videos with headless MuJoCo
+      - name: Render motion gallery videos
+        run: |
+          mkdir -p docs/_static/motion_gallery/videos docs/_static/motion_gallery/thumbnails
+          xvfb-run -a python docs/render_motion_videos.py --output docs/_static/motion_gallery
+        env:
+          MUJOCO_GL: osmesa
 
       - name: Build Sphinx
         run: |

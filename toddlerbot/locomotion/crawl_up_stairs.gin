@@ -1,0 +1,57 @@
+PPOConfig.num_timesteps = 800_000_000
+SimConfig.playback_speed = 1.0
+
+# Action parameters
+ActionConfig.action_parts = ['leg', 'arm', 'waist', 'neck']
+
+# Observation parameters
+# Option 1: Phase signal (use_phase_signal=True, default)
+#   num_single_obs = 2 (phase) + 3 (cmd) + 30 (motor_pos) + 30 (motor_vel) + 30 (last_act) + 3 (ang_vel) + 4 (quat) = 102
+#   num_single_privileged_obs = 102 + 30 (motor_pos_error) + 3 (lin_vel) + 30 (actuator_force) + 2 (stance) + 2 (ref_stance) = 169
+ObsConfig.num_single_obs = 102
+ObsConfig.num_single_privileged_obs = 169
+
+# Option 2: Motion phase (use_phase_signal=False)
+#   num_single_obs = 60 (ref_motor_pos+vel) + 3 (cmd) + 30 (motor_pos) + 30 (motor_vel) + 30 (last_act) + 3 (ang_vel) + 4 (quat) = 160
+#   num_single_privileged_obs = 160 + 30 (motor_pos_error) + 3 (lin_vel) + 30 (actuator_force) + 2 (stance) + 2 (ref_stance) = 227
+# ObsConfig.use_phase_signal = False
+# ObsConfig.num_single_obs = 160
+# ObsConfig.num_single_privileged_obs = 227
+
+ObsConfig.frame_stack = 1
+ObsConfig.c_frame_stack = 15
+
+# Command parameters
+CommandsConfig.command_obs_indices = [0, 1, 2]
+CommandsConfig.command_range = [[-1.0, 1.0], [-1.0, 1.0], [-1.0, 1.0]]
+CommandsConfig.deadzone = [0.1, 0.1, 0.1]
+
+# Reward parameters
+RewardsConfig.healthy_z_range = [0.15, 1.0]
+
+DomainRandConfig.friction_range= [0.8, 1.5]
+DomainRandConfig.rand_init_state_indices = [0]
+DomainRandConfig.add_domain_rand = False
+
+# Reward scales
+RewardScales.torso_pos_xy = 10.0
+RewardScales.torso_pos_z = 10.0
+RewardScales.motor_pos = 5.0
+RewardScales.motor_torque = 0.5
+RewardScales.energy = 0.05
+RewardScales.survival = 10.0
+RewardScales.body_quat = 5.0
+RewardScales.site_pos = 10.0
+RewardScales.body_lin_vel = 0.5
+RewardScales.body_ang_vel = 0.5
+RewardScales.action_rate = 0.1
+
+# Use the crawl up stairs scene
+TerrainConfig.scene = 'scene_mjx_crawl_up_stairs'
+
+# Obstacle randomization for training across different step heights
+# Original step height: 4.25cm (0.0425m). Range: ±2cm -> [2.25cm, 6.25cm]
+# Step heights: [2.25, 3.25, 4.25, 5.25, 6.25] cm = [0.0225, 0.0325, 0.0425, 0.0525, 0.0625] m
+ObstacleRandConfig.enabled = True
+ObstacleRandConfig.heights = [0.0225, 0.0325, 0.0425, 0.0525, 0.0625]
+ObstacleRandConfig.spawn_y_offsets = [-2.0, -1.0, 0.0, 1.0, 2.0]

@@ -35,6 +35,7 @@ check out the following sections:
 #. :ref:`additional_features`
 #. :ref:`useful_tools`
 #. :ref:`tips`
+#. :ref:`motion_gallery`
 #. :ref:`api`
 
 
@@ -48,4 +49,5 @@ check out the following sections:
    sections/03_additional_features
    sections/04_useful_tools
    sections/05_tips_and_tricks
-   sections/06_api
+   sections/06_motion_gallery
+   sections/07_api

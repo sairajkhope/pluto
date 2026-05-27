@@ -5,7 +5,6 @@ configuration settings for Proximal Policy Optimization (PPO) training.
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import gin
 
@@ -17,8 +16,8 @@ class PPOConfig:
 
     wandb_project: str = "ToddlerBot"
     wandb_entity: str = "toddlerbot"
-    policy_hidden_layer_sizes: Tuple[int, ...] = (512, 256, 128)
-    value_hidden_layer_sizes: Tuple[int, ...] = (512, 256, 128)
+    policy_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
+    value_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
     use_rnn: bool = False  # specifc to rsl_rl
     rnn_type: str = "lstm"
     rnn_hidden_size: int = 512
@@ -29,7 +28,7 @@ class PPOConfig:
     init_noise_std: float = 0.5
     num_timesteps: int = 500_000_000
     num_evals: int = 100
-    episode_length: int = 1000
+    episode_length: int = 0  # Auto-set by env from motion file; falls back to gin config if unavailable. Specify in gin or defaults to 0
     unroll_length: int = 20
     num_updates_per_batch: int = 4
     discounting: float = 0.97
@@ -38,10 +37,10 @@ class PPOConfig:
     normalize_advantage: bool = True
     normalize_observation: bool = False
     learning_rate: float = 3e-5
-    entropy_cost: float = 1e-3
+    entropy_cost: float = 5e-4  # 1e-3
     clipping_epsilon: float = 0.2
-    num_envs: int = 1024
+    num_envs: int = 4096  # 4096
     render_nums: int = 20
-    batch_size: int = 256
-    num_minibatches: int = 4
+    batch_size: int = 512  # 512
+    num_minibatches: int = 16  # 16
     seed: int = 0

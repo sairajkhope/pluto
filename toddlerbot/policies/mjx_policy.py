@@ -6,7 +6,7 @@ to control the robot using observations and commands with frame stacking and act
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import jax
 import numpy as np
@@ -26,7 +26,7 @@ device = "cpu"
 
 def load_wandb_policy(
     name: str, project="ToddlerBot", entity="toddlerbot"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Load a policy from WandB artifacts."""
     root = os.path.join("ckpts", name)
     ckpt_path = os.path.join(root, "model_best.onnx")
@@ -52,8 +52,8 @@ class MJXPolicy(BasePolicy):
         robot: Robot,
         init_motor_pos: npt.NDArray[np.float32],
         path: str,
-        joystick: Optional[Joystick] = None,
-        fixed_command: Optional[npt.NDArray[np.float32]] = None,
+        joystick: Joystick | None = None,
+        fixed_command: npt.NDArray[np.float32] | None = None,
     ):
         """Initializes the class with configuration and state parameters for controlling a robot.
 
@@ -113,7 +113,7 @@ class MJXPolicy(BasePolicy):
         self.action_parts = self.env_cfg["action"]["action_parts"]
         self.motor_limits = np.array(list(self.robot.motor_limits.values()))
 
-        action_mask: List[jax.Array] = []
+        action_mask: list[jax.Array] = []
         for part_name in self.action_parts:
             if part_name == "neck":
                 action_mask.append(self.neck_motor_indices)
@@ -129,6 +129,39 @@ class MJXPolicy(BasePolicy):
         self.default_action = self.default_motor_pos[self.action_mask]
         self.ref_motor_pos = self.default_motor_pos.copy()
 
+        # # Set neck position in ref_motor_pos based on fixed_command
+        # if hasattr(self.robot, "neck_joint_limits") and len(self.fixed_command) > 1:
+        #     # Interpolate neck positions from command (same logic as walk_zmp_ref.py)
+        #     neck_yaw_pos = np.interp(
+        #         self.fixed_command[0],
+        #         np.array([-1, 0, 1]),
+        #         np.array(
+        #             [
+        #                 self.robot.neck_joint_limits[0, 0],
+        #                 0.0,
+        #                 self.robot.neck_joint_limits[1, 0],
+        #             ]
+        #         ),
+        #     )
+        #     neck_pitch_pos = np.interp(
+        #         self.fixed_command[1],
+        #         np.array([-1, 0, 1]),
+        #         np.array(
+        #             [
+        #                 self.robot.neck_joint_limits[0, 1],
+        #                 0.0,
+        #                 self.robot.neck_joint_limits[1, 1],
+        #             ]
+        #         ),
+        #     )
+
+        #     # Convert joint positions to motor positions using robot's IK
+        #     neck_joint_pos = np.array([neck_yaw_pos, neck_pitch_pos])
+        #     neck_motor_pos = self.robot.neck_ik(neck_joint_pos)
+
+        #     # Update ref_motor_pos with neck positions
+        #     self.ref_motor_pos[self.neck_motor_indices] = neck_motor_pos
+
         self.base_torso_rot_inv = None
         self.target_torso_yaw = 0.0
         self.yaw_corr_gain = 0.5
@@ -140,8 +173,13 @@ class MJXPolicy(BasePolicy):
             except Exception:
                 pass
 
-        self.control_inputs: Dict[str, float] = {}
+        self.control_inputs: dict[str, float] = {}
         self.is_prepared = False
+        self.prep_duration = 7.0
+        self.min_standby_duration = (
+            5.0  # Minimum time to hold final pose before starting
+        )
+        self.is_done = False
 
         self.reset()
 
@@ -173,7 +211,7 @@ class MJXPolicy(BasePolicy):
         return np.zeros(1, dtype=np.float32)
 
     def get_command(
-        self, obs: Obs, control_inputs: Dict[str, float]
+        self, obs: Obs, control_inputs: dict[str, float]
     ) -> npt.NDArray[np.float32]:
         """Returns a fixed command as a NumPy array.
 
@@ -188,7 +226,7 @@ class MJXPolicy(BasePolicy):
     # @profile()
     def step(
         self, obs: Obs, sim: BaseSim
-    ) -> Tuple[Dict[str, float], npt.NDArray[np.float32]]:
+    ) -> tuple[dict[str, float], npt.NDArray[np.float32]]:
         """Processes a single step in the control loop, updating the system's state and generating motor target positions.
 
         Args:
@@ -201,17 +239,17 @@ class MJXPolicy(BasePolicy):
         is_real = "real" in sim.name
         if not self.is_prepared:
             self.is_prepared = True
-            self.prep_duration = 7.0
+            self.time_start = self.prep_duration
             self.prep_time, self.prep_action = get_action_traj(
                 0.0,
                 self.init_motor_pos,
                 self.ref_motor_pos,
                 self.prep_duration,
                 self.control_dt,
-                end_time=5.0,
+                end_time=self.min_standby_duration,
             )
 
-        if obs.time < self.prep_duration:
+        if obs.time < self.time_start:
             action = np.asarray(
                 interpolate_action(obs.time, self.prep_time, self.prep_action)
             )
@@ -223,7 +261,7 @@ class MJXPolicy(BasePolicy):
 
         time_curr = self.step_curr * self.control_dt
 
-        control_inputs: Dict[str, float] = {}
+        control_inputs: dict[str, float] = {}
         if len(self.control_inputs) > 0:
             control_inputs = self.control_inputs
         elif self.joystick is not None:
@@ -238,7 +276,19 @@ class MJXPolicy(BasePolicy):
             motor_vel = motor_vel[:-2]
 
         obs.rot = self.base_torso_rot_inv * obs.rot
-        obs.ang_vel = self.base_torso_rot_inv.apply(obs.ang_vel)
+
+        # if "walk" in self.name:
+        #     if self.fixed_command[-3] < 0:
+        #         x_axis = obs.rot.as_matrix()[:, 0]
+        #         yaw = np.pi
+        #         yaw_rot = R.from_rotvec(-yaw * np.array([0, 0, 1]))
+        #         obs.rot = yaw_rot * obs.rot
+
+        # NOTE: Ignore arm and neck motor positions for walking
+        if "walk" in self.name:
+            motor_pos_delta[23:30] = 0.0  # Sets right arm to default positions
+            motor_pos_delta[0:2] = 0.0  # neck
+            motor_pos_delta[16:23] = 0.0  # left arm
 
         obs_quat = obs.rot.as_quat(scalar_first=True)
         if obs_quat[0] < 0:

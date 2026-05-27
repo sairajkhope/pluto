@@ -14,7 +14,21 @@ The depth module uses [FoundationStereo](https://github.com/NVlabs/FoundationSte
 
    First, complete the Jetson Orin setup by following the [official ToddlerBot documentation](https://hshi74.github.io/toddlerbot/software/02_jetson_orin.html). Pay special attention to the **stereo depth estimation** section.
 
-2. **TensorRT Engine**
+2. **Run Automated Setup Script**
+
+   Install all depth estimation dependencies automatically:
+   ```bash
+   bash scripts/setup_depth_module.sh
+   ```
+
+   This script will:
+   - Install PyCUDA and PyTools
+   - Configure system TensorRT access
+   - Install cuSPARSELt libraries
+   - Install PyTorch for Jetson
+   - Build and install ONNX-TensorRT
+
+3. **TensorRT Engine**
 
    **Option A: Use Prebuilt Engine**
 

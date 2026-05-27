@@ -4,6 +4,10 @@ This module tests and visualizes reward function behavior in JAX-accelerated
 MuJoCo environments for locomotion tasks.
 """
 
+import os
+
+os.environ["USE_JAX"] = "true"
+
 import argparse
 import importlib
 import math
@@ -50,7 +54,7 @@ def main(env, reward_names) -> None:
     action = jnp.zeros(env.action_size)
 
     reward_dict: Dict[str, List[float]] = {name: [] for name in reward_names}
-    num_steps = env.motion_ref.n_frames
+    num_steps = getattr(env.motion_ref, "n_frames", 1000)
 
     def forward(data):
         data = mjx.forward(env.sys, data)

@@ -4,68 +4,103 @@ This module provides stereo depth estimation capabilities using a TensorRT engin
 for high-performance inference with camera calibration and rectification support.
 """
 
-import atexit
 import pickle
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import pycuda.driver as cuda
 import tensorrt as trt
 import torch
-import torch.nn.functional as F
-from PIL import Image
+
+# Import the required modules (assuming they are available)
+from onnx_tensorrt import tensorrt_engine
+import onnxruntime as ort
 
 from toddlerbot.depth.depth_utils import (
     depth_to_xyzmap,
     get_rectification_maps,
     to_open3d_Cloud,
 )
-from toddlerbot.sensing.camera import Camera
 from toddlerbot.utils.misc_utils import log, profile
 
-# Initialize CUDA context (gracefully handle missing CUDA)
-try:
-    cuda.init()
-    cuda.Device(0).retain_primary_context().push()
-    atexit.register(cuda.Context.pop)
-    CUDA_STREAM = torch.cuda.Stream()
-
-    # Normalization constants borrowed from ImageNet. Used for pre-processing before inference.
-    MEAN = torch.tensor([0.485, 0.456, 0.406], device="cuda")[:, None, None]
-    STD = torch.tensor([0.229, 0.224, 0.225], device="cuda")[:, None, None]
-
-    # Initialize TensorRT logger
-    TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
-    trt.init_libnvinfer_plugins(TRT_LOGGER, "")
-    CUDA_AVAILABLE = True
-except (RuntimeError, ImportError, AttributeError) as e:
-    # Handle cases where CUDA/TensorRT is not available
-    CUDA_STREAM = None
-    MEAN = torch.tensor([0.485, 0.456, 0.406])[:, None, None]
-    STD = torch.tensor([0.229, 0.224, 0.225])[:, None, None]
-    TRT_LOGGER = None
-    CUDA_AVAILABLE = False
-    print(f"Warning: CUDA/TensorRT not available for depth estimation: {e}")
+# Initialize TensorRT logger (like in the reference)
+TRT_LOGGER = trt.Logger(trt.Logger.WARNING)  # Use WARNING level like reference
+trt.init_libnvinfer_plugins(TRT_LOGGER, "")
 
 
-def gpu_preproc(img: Image.Image) -> torch.Tensor:
-    """Preprocess PIL Image for TensorRT inference with GPU normalization."""
-    arr = np.asarray(img, np.uint8).copy()
-    t = torch.as_tensor(arr, device="cuda").permute(2, 0, 1).unsqueeze_(0).float()
-    t.sub_(MEAN).div_(STD)  # normalize
-    return t.contiguous()
+def preprocess_image(
+    img: np.ndarray, target_height: int, target_width: int
+) -> torch.Tensor:
+    """Preprocess image like in run_demo_tensorrt.py"""
+    # Resize if needed
+    if img.shape[0] != target_height or img.shape[1] != target_width:
+        img = cv2.resize(img, (target_width, target_height))
+
+    # Convert to torch tensor like in reference: torch.as_tensor(input_image.copy()).float()[None].permute(0,3,1,2).contiguous()
+    resized_image = (
+        torch.as_tensor(img.copy()).float()[None].permute(0, 3, 1, 2).contiguous()
+    )
+    return resized_image
 
 
-def pad_to_multiple(t: torch.Tensor, k: int = 32) -> Tuple[torch.Tensor, int, int]:
-    """Pad tensor dimensions to nearest multiple of k for model requirements."""
-    _, _, h, w = t.shape
-    ph = (k - h % k) % k
-    pw = (k - w % k) % k
-    if ph or pw:  # pad if not multiple of k
-        t = F.pad(t, (0, pw, 0, ph))
-    return t.contiguous(), ph, pw
+def get_onnx_model(model_path):
+    """Load ONNX model like in run_demo_tensorrt.py"""
+    session_options = ort.SessionOptions()
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    model = ort.InferenceSession(
+        model_path, sess_options=session_options, providers=["CUDAExecutionProvider"]
+    )
+    return model
+
+
+def get_model_input_shape(model_path):
+    """Extract input shape (height, width) from model file"""
+    if model_path.endswith(".onnx"):
+        # Create a temporary session just to get input shape
+        session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        input_shape = session.get_inputs()[
+            0
+        ].shape  # Assuming first input is left image
+        # Shape is typically [batch, channels, height, width]
+        if len(input_shape) >= 4:
+            height, width = input_shape[2], input_shape[3]
+            return height, width
+        else:
+            raise ValueError(f"Unexpected input shape: {input_shape}")
+
+    elif model_path.endswith(".engine") or model_path.endswith(".plan"):
+        # Extract shape from TensorRT engine without full initialization
+        with open(model_path, "rb") as f:
+            engine_data = f.read()
+
+        runtime = trt.Runtime(TRT_LOGGER)
+        engine = runtime.deserialize_cuda_engine(engine_data)
+
+        # Get input tensor shape
+        for i in range(engine.num_io_tensors):
+            name = engine.get_tensor_name(i)
+            if engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                shape = engine.get_tensor_shape(name)
+                # Convert negative dimensions to positive (dynamic shapes)
+                shape = [d if d > 0 else 1 for d in shape]
+                if len(shape) >= 4:
+                    height, width = shape[2], shape[3]
+                    return height, width
+                break
+
+        raise ValueError("Could not extract input shape from TensorRT engine")
+    else:
+        raise ValueError(f"Unsupported model format: {model_path}")
+
+
+def get_engine_model(model_path):
+    """Load TensorRT engine model like in run_demo_tensorrt.py"""
+    with open(model_path, "rb") as file:
+        engine_data = file.read()
+    engine = trt.Runtime(TRT_LOGGER).deserialize_cuda_engine(engine_data)
+    engine = tensorrt_engine.Engine(engine)
+    return engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,68 +122,46 @@ class DepthEstimatorFoundationStereo:
         self,
         calib_params_path,
         rec_params_path,
-        engine_path,
+        engine_path,  # Can be .onnx, .engine, or .plan file
         calib_width,
         calib_height,
-        skip_rectify=False,
-        debug=False,
     ):
-        self.skip_rectify = skip_rectify
-        self.debug = debug
-
-        if not self.debug:
-            self.camera_left = Camera("left", width=calib_width, height=calib_height)
-            self.camera_right = Camera("right", width=calib_width, height=calib_height)
-
         # initialize tensorrt engine
         self._init_engine(engine_path)
 
         # initialize calibration and rectification maps
         self._init_calibration(
-            calib_params_path, rec_params_path, calib_width, calib_height, skip_rectify
+            calib_params_path, rec_params_path, calib_width, calib_height
         )
 
-    def _init_engine(self, engine_path) -> None:
+    def _init_engine(self, model_path) -> None:
         """
-        Initialize tensorrt engine and allocate buffers.
+        Initialize model like in run_demo_tensorrt.py - auto-detect format.
         Args:
-            engine_path: Path to the tensorrt engine file.
+            model_path: Path to the model file (.onnx, .engine, or .plan).
         Returns:
             None
         """
-        with open(engine_path, "rb") as f, trt.Runtime(TRT_LOGGER) as rt:
-            self.engine = rt.deserialize_cuda_engine(f.read())
-            self.ctx = self.engine.create_execution_context()
-            self.stream = cuda.Stream()
-            self.dev: Dict[str, cuda.DeviceAllocation] = {}
-            self.host: Dict[str, np.ndarray] = {}
-            expected_shape = None
-            for i in range(self.engine.num_io_tensors):
-                name = self.engine.get_tensor_name(i)
-                shape = [d if d > 0 else 1 for d in self.engine.get_tensor_shape(name)]
-                dtype = np.dtype(trt.nptype(self.engine.get_tensor_dtype(name)))
-                nbytes = int(np.prod(shape) * dtype.itemsize)
+        # Extract input shape from the model file
+        self.height, self.width = get_model_input_shape(model_path)
+        log(
+            f"Extracted model input shape: {self.height}x{self.width}",
+            header="DepthEstimator",
+        )
 
-                # Extract spatial dimensions (height, width)
-                spatial_shape = shape[2:]
-                if expected_shape is None:
-                    expected_shape = spatial_shape
-
-                is_input = self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT
-
-                if is_input:
-                    self.dev[name] = cuda.mem_alloc(nbytes)
-                else:
-                    host = cuda.pagelocked_empty(int(np.prod(shape)), dtype=dtype)
-                    dev = cuda.mem_alloc(nbytes)
-                    self.host[name], self.dev[name] = host, dev
-
-                self.ctx.set_tensor_address(name, int(self.dev[name]))
-
-            assert expected_shape is not None, "Expected shape is not set"
-            self.height, self.width = expected_shape
-            log(f"Engine shape: {self.height}x{self.width}", header="DepthEstimator")
-            log("Initial I/O buffers ready", header="DepthEstimator")
+        # Auto-detect model format and load like in run_demo_tensorrt.py
+        if model_path.endswith(".onnx"):
+            self.model = get_onnx_model(model_path)
+            self.model_type = "onnx"
+            log("ONNX model loaded", header="DepthEstimator")
+        elif model_path.endswith(".engine") or model_path.endswith(".plan"):
+            self.model = get_engine_model(model_path)
+            self.model_type = "engine"
+            log("TensorRT engine model loaded", header="DepthEstimator")
+        else:
+            raise ValueError(
+                f"Unknown model format {model_path}. Supported formats: .onnx, .engine, .plan"
+            )
 
     def _init_calibration(
         self,
@@ -156,7 +169,6 @@ class DepthEstimatorFoundationStereo:
         rec_params_path,
         calib_width,
         calib_height,
-        skip_rectify,
     ) -> None:
         """
         Initialize calibration and rectification maps.
@@ -165,7 +177,6 @@ class DepthEstimatorFoundationStereo:
             rec_params_path: Path to the rectification parameters file.
             calib_width: Width used for calibration.
             calib_height: Height used for calibration.
-            skip_rectify: Whether to skip rectification.
         Returns:
             None
         """
@@ -220,99 +231,52 @@ class DepthEstimatorFoundationStereo:
         )
 
         # Pre-compute combined rectification and resize maps
-        if not skip_rectify:
-            self.combined_map1_left = cv2.resize(
-                self.map1_left,
-                (self.width, self.height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            self.combined_map2_left = cv2.resize(
-                self.map2_left,
-                (self.width, self.height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            self.combined_map1_right = cv2.resize(
-                self.map1_right,
-                (self.width, self.height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            self.combined_map2_right = cv2.resize(
-                self.map2_right,
-                (self.width, self.height),
-                interpolation=cv2.INTER_LINEAR,
-            )
+        self.combined_map1_left = cv2.resize(
+            self.map1_left,
+            (self.width, self.height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        self.combined_map2_left = cv2.resize(
+            self.map2_left,
+            (self.width, self.height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        self.combined_map1_right = cv2.resize(
+            self.map1_right,
+            (self.width, self.height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        self.combined_map2_right = cv2.resize(
+            self.map2_right,
+            (self.width, self.height),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
-    def _infer(self, left: Image.Image, right: Image.Image) -> Dict[str, np.ndarray]:
+    def _infer(self, left_img: np.ndarray, right_img: np.ndarray) -> np.ndarray:
         """
-        Run inference on the tensorrt engine to obtain the disparity map.
+        Run inference like in run_demo_tensorrt.py.
 
         Args:
-            left: Left image.
-            right: Right image.
+            left_img: Left image as numpy array.
+            right_img: Right image as numpy array.
         Returns:
-            Dictionary of output tensors.
+            Disparity map as numpy array.
         """
-        # preprocessing
-        with torch.cuda.stream(CUDA_STREAM):
-            left_tensor = gpu_preproc(left)
-            right_tensor = gpu_preproc(right)
-        CUDA_STREAM.synchronize()
+        # Preprocess images
+        left_tensor = preprocess_image(left_img, self.height, self.width)
+        right_tensor = preprocess_image(right_img, self.height, self.width)
 
-        inputs = [
-            n
-            for n in self.dev
-            if self.engine.get_tensor_mode(n) == trt.TensorIOMode.INPUT
-        ]
+        # Run inference based on model type, exactly like in run_demo_tensorrt.py
+        torch.cuda.synchronize()
+        if self.model_type == "onnx":
+            left_disp = self.model.run(
+                None, {"left": left_tensor.numpy(), "right": right_tensor.numpy()}
+            )[0]
+        else:  # engine or plan
+            left_disp = self.model.run([left_tensor.numpy(), right_tensor.numpy()])[0]
+        torch.cuda.synchronize()
 
-        if len(inputs) == 1:  # 6-channel path
-            inp_tensors = [torch.cat([left_tensor, right_tensor], dim=1)]
-        elif len(inputs) == 2:  # 3-ch + 3-ch path
-            inp_tensors = [left_tensor, right_tensor]
-        else:
-            raise RuntimeError("Engine has unexpected number of inputs")
-
-        # upload inputs
-        ph = pw = 0
-        for name, tensor in zip(inputs, inp_tensors):
-            tensor, ph, pw = pad_to_multiple(tensor, 32)
-            needed = tensor.element_size() * tensor.numel()
-            cuda.memcpy_dtod_async(
-                self.dev[name], int(tensor.data_ptr()), needed, self.stream
-            )
-
-            if any(d < 0 for d in self.engine.get_tensor_shape(name)):
-                self.ctx.set_input_shape(name, tuple(tensor.shape))
-
-        # run inference
-        self.ctx.execute_async_v3(stream_handle=self.stream.handle)
-
-        # download outputs
-        for name in self.host:
-            out_shape = tuple(self.ctx.get_tensor_shape(name))
-            needed = np.prod(out_shape) * 4  # float32
-            cuda.memcpy_dtoh_async(self.host[name], self.dev[name], self.stream)
-        self.stream.synchronize()
-
-        # unpack
-        outs: Dict[str, np.ndarray] = {}
-        for name, buf in self.host.items():
-            out_shape = tuple(self.ctx.get_tensor_shape(name))
-            arr = np.frombuffer(buf, dtype=np.float32, count=int(np.prod(out_shape)))
-            arr = arr.reshape(out_shape)
-            if ph or pw:
-                arr = arr[:, :, : -ph or None, : -pw or None]
-            outs[name] = arr.squeeze()
-        return outs
-
-    def __del__(self) -> None:
-        """
-        Destructor to release camera resources.
-        """
-        # if camera is initialized, release it
-        if hasattr(self, "camera_left") and self.camera_left is not None:
-            self.camera_left.close()
-        if hasattr(self, "camera_right") and self.camera_right is not None:
-            self.camera_right.close()
+        return left_disp.squeeze()  # HxW
 
     def _process_images(self, img0, img1) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -323,45 +287,37 @@ class DepthEstimatorFoundationStereo:
         Returns:
             Tuple of processed images.
         """
-        if not self.skip_rectify:
-            img0 = cv2.remap(
-                img0,
-                self.combined_map1_left,
-                self.combined_map2_left,
-                interpolation=cv2.INTER_LINEAR,
-            )
-            img1 = cv2.remap(
-                img1,
-                self.combined_map1_right,
-                self.combined_map2_right,
-                interpolation=cv2.INTER_LINEAR,
-            )
-        else:
-            # Just resize if no rectification
-            img0 = cv2.resize(
-                img0, (self.width, self.height), interpolation=cv2.INTER_AREA
-            )
-            img1 = cv2.resize(
-                img1, (self.width, self.height), interpolation=cv2.INTER_AREA
-            )
+        img0 = cv2.remap(
+            img0,
+            self.combined_map1_left,
+            self.combined_map2_left,
+            interpolation=cv2.INTER_LINEAR,
+        )
+        img1 = cv2.remap(
+            img1,
+            self.combined_map1_right,
+            self.combined_map2_right,
+            interpolation=cv2.INTER_LINEAR,
+        )
 
         return img0, img1
 
     @profile()
     def get_depth(
         self,
+        img_left: np.ndarray,
+        img_right: np.ndarray,
         *,
         remove_invisible: bool = False,
-        debug_images: Optional[Tuple[np.ndarray, np.ndarray]] = None,
         return_all: bool = False,
     ) -> DepthResult:
         """Estimate per-pixel depth from the stereo pair.
 
         Args:
+            img_left: Left camera image.
+            img_right: Right camera image.
             remove_invisible: If ``True``, mask points that project outside the
                 right-camera image.
-            debug_images: Optional pre-captured (left, right) images. When
-                ``None``, frames are captured from the cameras.
             return_all: If ``True``, populate every field in :class:`DepthResult`;
                 otherwise only ``depth`` is guaranteed to be non-``None``.
 
@@ -369,12 +325,6 @@ class DepthEstimatorFoundationStereo:
             An immutable :class:`DepthResult` whose fields are either populated or
             ``None`` depending on ``return_all``.
         """
-        # Acquire images
-        if debug_images is not None:
-            img_left, img_right = debug_images
-        else:
-            img_left = self.camera_left.get_frame()
-            img_right = self.camera_right.get_frame()
 
         original_left = img_left.copy() if return_all else None
         original_right = img_right.copy() if return_all else None
@@ -387,28 +337,23 @@ class DepthEstimatorFoundationStereo:
 
         # Depth inference
         # Switch the order when the sign of the baseline is positive which means right images are rectified to the left side on the baseline
-        # disparity: np.ndarray = next(iter(self._infer(img_left, img_right).values()))
         if self.T[0][0] < 0:
-            disparity: np.ndarray = next(
-                iter(self._infer(img_left, img_right).values())
-            )
+            disparity = self._infer(img_left, img_right)
         elif self.T[0][0] > 0:
-            disparity: np.ndarray = next(
-                iter(self._infer(img_right, img_left).values())
-            )
+            disparity = self._infer(img_right, img_left)
         else:
             raise ValueError("Baseline is zero")
 
         if remove_invisible:
             xx = np.arange(disparity.shape[1])[None, :]
             invalid = (xx - disparity) < 0
-            disparity = disparity.copy()
-            disparity[invalid] = np.inf
+            disparity_masked = disparity.copy()
+            disparity_masked[invalid] = np.inf
+            disparity = disparity_masked
 
-        # depth: np.ndarray = (
-        #     self.scaled_K[0, 0] * self.baseline / disparity
-        # )  # z = f*B / disparity
-        depth: np.ndarray = self.fx_times_baseline / disparity
+        # Use the same formula as run_demo_tensorrt.py: depth = K[0,0]*baseline/(left_disp + doffs)
+        doffs = 0
+        depth: np.ndarray = self.fx_times_baseline / (disparity + doffs)
 
         return DepthResult(
             depth=depth,
@@ -425,7 +370,7 @@ class DepthEstimatorFoundationStereo:
         resized_image,
         is_BGR=True,
         zmim=0.0,
-        zmax=np.inf,
+        zmax=None,
         denoise_cloud=False,
         denoise_nb_points=30,
         denoise_radius=0.03,
@@ -444,8 +389,8 @@ class DepthEstimatorFoundationStereo:
         Returns:
             Point cloud (open3d.geometry.PointCloud)
         """
-        # xyz_map = depth_to_xyzmap(depth, self.scaled_K, zmin=zmim)
-        # TODO: Use cv2.reprojectImageTo3D using disparity and Q matrix instead?
+        zmax = np.inf if zmax is None else zmax
+        # Use the same approach as run_demo_tensorrt.py
         xyz_map = depth_to_xyzmap(depth, self.scaled_rectified_K, zmin=zmim)
 
         if is_BGR:

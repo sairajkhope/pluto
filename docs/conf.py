@@ -25,6 +25,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "display_item",
     "sphinx_design",
+    "motion_gallery_ext",
 ]
 
 templates_path = ["_templates"]

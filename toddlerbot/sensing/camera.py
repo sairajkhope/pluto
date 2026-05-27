@@ -15,6 +15,17 @@ import numpy.typing as npt
 import pupil_apriltags as apriltag
 
 
+# Reference camera settings (left camera - locked, well-calibrated)
+LEFT_CAMERA_EXPOSURE = 30
+LEFT_CAMERA_BRIGHTNESS = 32
+LEFT_CAMERA_CONTRAST = 64
+
+# Right camera settings (tuned to match left camera)
+RIGHT_CAMERA_EXPOSURE = 37
+RIGHT_CAMERA_BRIGHTNESS = 42
+RIGHT_CAMERA_CONTRAST = 64
+
+
 class AprilTagDetector:
     """AprilTag detector class."""
 
@@ -134,17 +145,26 @@ class Camera:
         self.width = width
         self.height = height
 
-        # Run the command
+        # Apply camera-specific settings (constants defined at top of file)
+        if side == "left":
+            controls = (
+                f"auto_exposure=1,exposure_time_absolute={LEFT_CAMERA_EXPOSURE},"
+                f"brightness={LEFT_CAMERA_BRIGHTNESS},contrast={LEFT_CAMERA_CONTRAST}"
+            )
+        else:  # right camera
+            controls = (
+                f"auto_exposure=1,exposure_time_absolute={RIGHT_CAMERA_EXPOSURE},"
+                f"brightness={RIGHT_CAMERA_BRIGHTNESS},contrast={RIGHT_CAMERA_CONTRAST}"
+            )
+
         subprocess.run(
-            f"v4l2-ctl --device=/dev/video{self.camera_id} --set-ctrl=auto_exposure=1,exposure_time_absolute=30",
-            # f"v4l2-ctl --device=/dev/video{self.camera_id} --set-ctrl=brightness=48,exposure_time_absolute=30",
+            f"v4l2-ctl --device=/dev/video{self.camera_id} --set-ctrl={controls}",
             shell=True,
             text=True,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        # print(result.stdout.strip())
 
         self.cap = cv2.VideoCapture(self.camera_id)
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -152,6 +172,9 @@ class Camera:
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.cap.set(
+            cv2.CAP_PROP_BUFFERSIZE, 1
+        )  # Minimize latency by keeping only latest frame
 
         self.detector = AprilTagDetector()
 

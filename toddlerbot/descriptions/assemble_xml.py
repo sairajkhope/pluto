@@ -472,8 +472,11 @@ def add_sites(
             parent, geom = value[0]
             geom_pos = string_to_list(geom.attrib["pos"])
             # geom_size = string_to_list(geom.attrib["size"])
-            # TODO: Hardcoded size for now
-            bottom_center_pos = [geom_pos[0] - 0.0107116, geom_pos[1], geom_pos[2]]
+            bottom_center_pos = [
+                geom_pos[0] - geom_size[2] / 2,
+                geom_pos[1],
+                geom_pos[2],
+            ]
 
             ET.SubElement(
                 parent,
@@ -645,10 +648,30 @@ def add_keyframes(
     # com_2 = data.body(0).subtree_com.copy()
 
     if waist_act_1_pos is not None:
-        root_pos = np.array(offsets["zero_pos"])
-        root_pos[0] -= com_0[0]
-        root_pos[2] += offsets["home_pos_z_delta"]
+        # Check if custom xyz position is provided
+        if "home_qpos_xyz" in offsets:
+            root_pos = np.array(offsets["home_qpos_xyz"])
+            # If x or y is non-zero, user is explicitly setting position - use as-is
+            # If both x and y are zero, apply COM centering to x (backward compatible)
+            if root_pos[0] == 0.0 and root_pos[1] == 0.0:
+                root_pos[0] = offsets["zero_pos"][0] - com_0[0]
+                root_pos[1] = offsets["zero_pos"][1]
+            # z is always used as provided from home_qpos_xyz
+        else:
+            # Default behavior: use zero_pos with COM x-offset and z-delta
+            root_pos = np.array(offsets["zero_pos"])
+            root_pos[0] -= com_0[0]
+            root_pos[2] += offsets["home_pos_z_delta"]
+
         data.qpos[:3] = root_pos
+
+        # Check if custom quaternion is provided in offsets
+        if "home_qpos_quat" in offsets:
+            # Quaternion format: [w, x, y, z]
+            root_quat = np.array(offsets["home_qpos_quat"])
+            # Normalize to ensure it's a valid unit quaternion
+            root_quat = root_quat / np.linalg.norm(root_quat)
+            data.qpos[3:7] = root_quat
 
     # mujoco.mj_forward(model, data)
     # com_3 = data.body(0).subtree_com.copy()

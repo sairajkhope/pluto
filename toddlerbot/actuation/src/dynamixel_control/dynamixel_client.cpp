@@ -4,6 +4,8 @@
 #include <thread>
 #include <chrono>
 
+#define ERRBIT_ALERT 128
+
 // static members
 std::set<DynamixelClient *> DynamixelClient::OPEN_CLIENTS;
 std::once_flag DynamixelClient::cleanup_flag;
@@ -69,7 +71,7 @@ void DynamixelClient::disconnect()
 {
   if (!is_connected())
     return;
-  set_torque_enabled(motor_ids_, false);
+  set_torque_enabled(motor_ids_, false, 0);
 
   for (auto &p : sync_readers_)
     delete p.second;
@@ -178,8 +180,11 @@ DynamixelClient::bulk_read(const std::vector<std::string> &attrs, int retries)
   check_connected();
   auto t_tx = std::chrono::high_resolution_clock::now();
 
+  bool success = false;
+  int attempt = 0;
   while (true)
   {
+    attempt++;
     int comm;
     {
       std::lock_guard<std::mutex> lock(comms_mutex_);
@@ -191,8 +196,21 @@ DynamixelClient::bulk_read(const std::vector<std::string> &attrs, int retries)
     }
     if (handle_packet_result(comm, 0, -1, "bulk_read"))
     {
+      success = true;
       break; // success
     }
+    // Debug: print port and motor IDs on failure
+    std::cout << "[Dynamixel DEBUG] bulk_read FAILED on port: " << port_name_
+              << " | attempt: " << attempt
+              << " | motor_ids: [";
+    for (size_t i = 0; i < motor_ids_.size(); ++i)
+    {
+      std::cout << motor_ids_[i];
+      if (i < motor_ids_.size() - 1)
+        std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+
     if (retries == 0)
     {
       break; // give up
@@ -209,11 +227,16 @@ DynamixelClient::bulk_read(const std::vector<std::string> &attrs, int retries)
     res[a] = std::vector<float>(motor_ids_.size(), 0.0f);
   }
 
+  // Debug: track which motors failed to respond
+  std::vector<int> failed_ids;
   for (size_t i = 0; i < motor_ids_.size(); ++i)
   {
     uint8_t id = motor_ids_[i];
     if (!bulk_reader_.isAvailable(id, ADDR_PRESENT_POS_VEL_CUR, LEN_PRESENT_POS_VEL_CUR))
+    {
+      failed_ids.push_back(id);
       continue;
+    }
 
     uint32_t p = bulk_reader_.getData(id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION);
     res["pos"][i] = unsigned_to_signed(p, LEN_PRESENT_POSITION) * DEFAULT_POS_SCALE;
@@ -225,6 +248,20 @@ DynamixelClient::bulk_read(const std::vector<std::string> &attrs, int retries)
     if (cur_scale_arr_.empty())
       cur_scale_arr_ = get_cur_scale();
     res["cur"][i] = unsigned_to_signed(c, LEN_PRESENT_CURRENT) * cur_scale_arr_[i];
+  }
+
+  // Debug: report which specific motors didn't respond
+  if (!failed_ids.empty())
+  {
+    std::cout << "[Dynamixel DEBUG] bulk_read on port: " << port_name_
+              << " | motors NOT responding: [";
+    for (size_t i = 0; i < failed_ids.size(); ++i)
+    {
+      std::cout << failed_ids[i];
+      if (i < failed_ids.size() - 1)
+        std::cout << ", ";
+    }
+    std::cout << "] (out of " << motor_ids_.size() << " total)" << std::endl;
   }
 
   return {latency_ms, res};
@@ -307,8 +344,18 @@ bool DynamixelClient::handle_packet_result(int comm, int dxl_err, int id, const 
     e = packet_handler_->getRxPacketError(dxl_err);
   if (!e.empty())
   {
-    std::cerr << "[Dynamixel] " << ctx << " id=" << id << " -- " << e << std::endl;
-    return false;
+    std::cout << "[Dynamixel] " << ctx << " id=" << id << " -- " << e << std::endl;
+    if (dxl_err & ERRBIT_ALERT)
+    {
+      std::cout << "[Dynamixel] " << ctx << " id=" << id << " -- Rebooting..." << std::endl;
+      // handle the hardware error by rebooting
+      reboot({id});
+      // wait for servo to initialize after reboot
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      return true;
+    }
+    else
+      return false;
   }
   return true;
 }

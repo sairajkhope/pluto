@@ -35,13 +35,13 @@ std::vector<int> scan_port(const std::string &port_name,
 
   if (!portHandler->openPort())
   {
-    std::cerr << "[scan_port] Failed to open " << port_name << std::endl;
+    std::cout << "[scan_port] Failed to open " << port_name << std::endl;
     return found_ids;
   }
 
   if (!portHandler->setBaudRate(baudrate))
   {
-    std::cerr << "[scan_port] Failed to set baudrate on " << port_name << std::endl;
+    std::cout << "[scan_port] Failed to set baudrate on " << port_name << std::endl;
     portHandler->closePort();
     return found_ids;
   }
@@ -153,7 +153,7 @@ std::vector<std::shared_ptr<DynamixelControl>> create_controllers(
     }
     catch (const std::exception &e)
     {
-      std::cerr << "[create_controllers] Error scanning " << full_path << ": " << e.what() << std::endl;
+      std::cout << "[create_controllers] Error scanning " << full_path << ": " << e.what() << std::endl;
     }
   }
 
@@ -251,10 +251,10 @@ get_motor_states(const std::vector<DynamixelControl *> &controllers, int retries
     }
     catch (const std::exception &e)
     {
-      std::cerr << "[get_motor_states] Exception for " << key << " ids: ";
+      std::cout << "[get_motor_states] Exception for " << key << " ids: ";
       for (auto id : controllers[i]->get_motor_ids())
-        std::cerr << id << " ";
-      std::cerr << "-- " << e.what() << std::endl;
+        std::cout << id << " ";
+      std::cout << "-- " << e.what() << std::endl;
 
       // Insert an empty map to preserve key
       states[key] = std::map<std::string, std::vector<float>>{};
@@ -291,6 +291,14 @@ void disable_motors(const std::vector<std::shared_ptr<DynamixelControl>> &ctrls)
   }
 }
 
+void enable_motors(const std::vector<std::shared_ptr<DynamixelControl>> &ctrls)
+{
+  for (const auto &ctrl : ctrls)
+  {
+    ctrl->enable_motors();
+  }
+}
+
 void close_motors(const std::vector<std::shared_ptr<DynamixelControl>> &ctrls)
 {
   for (const auto &ctrl : ctrls)
@@ -324,6 +332,8 @@ PYBIND11_MODULE(dynamixel_cpp, m)
         "Set position for each controller's motors");
   m.def("disable_motors", &disable_motors, py::arg("controllers"),
         "Disable torque on all motors across all controllers");
+  m.def("enable_motors", &enable_motors, py::arg("controllers"),
+        "Enable torque on all motors across all controllers");
   m.def("close", &close_motors, py::arg("controllers"),
         "Disable torque and disconnect all specified DynamixelControl instances");
 }

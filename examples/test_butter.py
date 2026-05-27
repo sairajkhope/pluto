@@ -29,14 +29,14 @@ def apply_butterworth_filter(b, a, signal):
     # Apply filter to each axis separately
     for axis in range(signal.shape[1]):
         # Initialize state for filter history for this axis
-        past_inputs = np.zeros(len(b) - 1)
-        past_outputs = np.zeros(len(a) - 1)
+        past_inputs = np.zeros((len(b) - 1, 1))
+        past_outputs = np.zeros((len(a) - 1, 1))
 
         for i in range(len(signal)):
             y, past_inputs, past_outputs = butterworth(
                 b, a, signal[i, axis], past_inputs, past_outputs
             )
-            filtered_signal[i, axis] = y
+            filtered_signal[i, axis] = y.item()
 
     return filtered_signal
 

@@ -21,21 +21,31 @@ import numpy as np
 from mujoco import mjx
 
 from toddlerbot.sim.terrain.generate_terrain import create_terrain_spec
+from toddlerbot.sim.terrain.get_elevation import (
+    add_elevation_map_markers,
+    get_elevation_map,
+    update_elevation_visualization,
+)
 
 # === Terrain config ===
 TILE_WIDTH = 4.0
 TILE_LENGTH = 4.0
-PIXELS_PER_METER = 16
+PIXELS_PER_METER = 32
 TIMESTEP = 0.004
+TERRAIN_MAP = [
+    ["boxes", "stairs", "bumps"],
+    ["flat", "slope", "rough"],
+]
+
+# === Render config ===
 FRAMERATE = 30
 DURATION = 2.0  # seconds
 
-# === Predefined layout ===
-TERRAIN_MAP = [
-    # ["boxes", "stairs", "bumps"],
-    # ["flat", "slope", "rough"],
-    ["flat"]
-]
+# === Elevation map config ===
+VISUALIZE_ELEVATION_MAP = True  # Whether to visualize elevation map spheres
+ELEVATION_MAP_SIZE = 0.5  # Size of elevation map in meters (square)
+ELEVATION_MAP_RESOLUTION = 0.02  # Resolution in meters (grid spacing)
+ELEVATION_MAP_FORWARD_OFFSET = 0.25  # Offset center forward in robot frame (meters)
 
 
 def main():
@@ -44,11 +54,11 @@ def main():
     this_dir = os.path.dirname(os.path.abspath(__file__))
     robot_path = os.path.join(
         this_dir,
-        "../toddlerbot/descriptions/toddlerbot_2xm/toddlerbot_2xm_mjx.xml",
+        "../toddlerbot/descriptions/toddlerbot_2xc/toddlerbot_2xc_mjx.xml",
     )
 
     # === Generate terrain + robot MjSpec ===
-    spec, _, _, _ = create_terrain_spec(
+    spec, _, _, elevation_info, _ = create_terrain_spec(
         tile_width=TILE_WIDTH,
         tile_length=TILE_LENGTH,
         terrain_map=TERRAIN_MAP,
@@ -56,6 +66,13 @@ def main():
         timestep=TIMESTEP,
         pixels_per_meter=PIXELS_PER_METER,
     )
+
+    # === Add elevation visualization if enabled ===
+    if VISUALIZE_ELEVATION_MAP:
+        print("Adding elevation map visualization...")
+        add_elevation_map_markers(spec, ELEVATION_MAP_SIZE, ELEVATION_MAP_RESOLUTION)
+    else:
+        print("Elevation map visualization disabled.")
 
     # Add optional camera
     spec.worldbody.add_camera(
@@ -84,6 +101,9 @@ def main():
     renderer = mujoco.Renderer(model, width=640, height=480)
     scene_option = mujoco.MjvOption()
     scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = 1
+    # Enable group 4 visibility for elevation map markers
+    if VISUALIZE_ELEVATION_MAP:
+        scene_option.geomgroup[4] = 1
 
     jit_step = jax.jit(mjx.step)
 
@@ -107,6 +127,22 @@ def main():
             t2 = time.time()
             mj_data = mjx.get_data(model, mjx_data)
             mujoco.mj_forward(model, mj_data)
+
+            # Update elevation visualization spheres if enabled
+            if VISUALIZE_ELEVATION_MAP:
+                # Generate elevation map and update visualization
+                global_map, relative_map, x_coords, y_coords = get_elevation_map(
+                    mj_data,
+                    elevation_info,
+                    map_size=ELEVATION_MAP_SIZE,
+                    map_resolution=ELEVATION_MAP_RESOLUTION,
+                    forward_offset=ELEVATION_MAP_FORWARD_OFFSET,
+                )
+
+                update_elevation_visualization(
+                    mj_data, model, global_map, x_coords, y_coords
+                )
+
             renderer.update_scene(
                 mj_data, scene_option=scene_option, camera="perspective"
             )
@@ -130,7 +166,12 @@ def main():
     print(f"Max contacts seen in sim: {max(contact_counts)}")
 
     # === Save video ===
-    out_path = os.path.join(this_dir, "test_terrain_mjx.mp4")
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_dir = os.path.join(this_dir, "..", "results", f"test_terrain_mjx_{timestamp}")
+    os.makedirs(results_dir, exist_ok=True)
+    out_path = os.path.join(results_dir, "test_terrain_mjx.mp4")
     media.write_video(out_path, frames, fps=FRAMERATE)
     print(f"Saved video to {out_path}")
 

@@ -23,6 +23,7 @@ class ZMQMessage:
     action: Optional[npt.NDArray[np.float32]] = None
     fsr: Optional[npt.NDArray[np.float32]] = None
     camera_frame: Optional[npt.NDArray[np.uint8]] = None
+    text: Optional[str] = None
 
 
 def sync_time(ip: str):
@@ -50,7 +51,9 @@ def sync_time(ip: str):
 class ZMQNode:
     """A class for handling ZMQ communication between sender and receiver nodes."""
 
-    def __init__(self, type: str = "sender", ip: str = "", queue_len: int = 1):
+    def __init__(
+        self, type: str = "sender", ip: str = "", port: int = 5555, queue_len: int = 1
+    ):
         """Initializes a ZMQ connection with specified type, IP, and queue length.
 
         Args:
@@ -67,6 +70,7 @@ class ZMQNode:
 
         self.queue_len = queue_len
         self.ip = ip if len(ip) > 0 else "127.0.0.1"
+        self.port = port
         self.start_zmq()
 
     def start_zmq(self):
@@ -87,11 +91,11 @@ class ZMQNode:
             # self.socket.setsockopt(
             #     zmq.IMMEDIATE, 1
             # )  # Prevent blocking if receiver is not available
-            self.socket.connect("tcp://" + self.ip + ":5555")
+            self.socket.connect("tcp://" + self.ip + f":{self.port}")
 
         elif self.type == "receiver":
             self.socket = self.zmq_context.socket(zmq.PULL)
-            self.socket.bind("tcp://0.0.0.0:5555")  # Listen on all interfaces
+            self.socket.bind(f"tcp://0.0.0.0:{self.port}")  # Listen on all interfaces
             self.socket.setsockopt(zmq.RCVHWM, 1)  # Limit receiver's queue to 1 message
             self.socket.setsockopt(zmq.CONFLATE, 1)  # Only keep the latest message
             self.socket.setsockopt(zmq.RCVBUF, 1024)

@@ -1,0 +1,619 @@
+<?xml version="1.0"?>
+<mujoco model="toddlerbot_2xc_scene">
+  <include file="toddlerbot_2xc.xml"/>
+  <statistic center="0 0 0.25" extent="0.6"/>
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="160" elevation="-20" offwidth="1280" offheight="720"/>
+  </visual>
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <camera name="perspective" pos="0.7 -0.7 0.7" xyaxes="1 1 0 -1 1 3" mode="trackcom"/>
+    <camera name="side" pos="0 -1 0.6" xyaxes="1 0 0 0 1 3" mode="trackcom"/>
+    <camera name="top" pos="0 0 1" xyaxes="0 1 0 -1 0 0" mode="trackcom"/>
+    <camera name="front" pos="1 0 0.6" xyaxes="0 1 0 -1 0 3" mode="trackcom"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" condim="3"/>
+    <!-- climb_up_box_2xm and climb_down_box_2xm-->
+    <geom name="cart_0" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_0"/>
+    <geom name="cart_1" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_1"/>
+    <geom name="cart_2" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_2"/>
+    <geom name="cart_3" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_3"/>
+    <geom name="cart_4" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_4"/>
+    <geom name="cart_5" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_5"/>
+    <geom name="cart_6" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_6"/>
+    <geom name="cart_7" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_7"/>
+    <geom name="cart_8" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_8"/>
+    <geom name="cart_9" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_9"/>
+    <geom name="cart_10" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_10"/>
+    <geom name="cart_11" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_11"/>
+    <geom name="cart_12" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_12"/>
+    <geom name="cart_13" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_13"/>
+    <geom name="cart_14" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_14"/>
+    <geom name="cart_15" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_15"/>
+    <geom name="cart_16" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_16"/>
+    <geom name="cart_17" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_17"/>
+    <geom name="cart_18" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_18"/>
+    <geom name="cart_19" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_19"/>
+    <geom name="cart_20" type="mesh" pos="-0.0 0.0 0.103" quat="0.0 0.0 0.0 1.0" mesh="cart_part_20"/>
+  </worldbody>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.0"/>
+    <mesh file="cart/cart_part_0.stl"/>
+    <mesh file="cart/cart_part_1.stl"/>
+    <mesh file="cart/cart_part_2.stl"/>
+    <mesh file="cart/cart_part_3.stl"/>
+    <mesh file="cart/cart_part_4.stl"/>
+    <mesh file="cart/cart_part_5.stl"/>
+    <mesh file="cart/cart_part_6.stl"/>
+    <mesh file="cart/cart_part_7.stl"/>
+    <mesh file="cart/cart_part_8.stl"/>
+    <mesh file="cart/cart_part_9.stl"/>
+    <mesh file="cart/cart_part_10.stl"/>
+    <mesh file="cart/cart_part_11.stl"/>
+    <mesh file="cart/cart_part_12.stl"/>
+    <mesh file="cart/cart_part_13.stl"/>
+    <mesh file="cart/cart_part_14.stl"/>
+    <mesh file="cart/cart_part_15.stl"/>
+    <mesh file="cart/cart_part_16.stl"/>
+    <mesh file="cart/cart_part_17.stl"/>
+    <mesh file="cart/cart_part_18.stl"/>
+    <mesh file="cart/cart_part_19.stl"/>
+    <mesh file="cart/cart_part_20.stl"/>
+  </asset>
+  <contact>
+    <pair geom1="floor" geom2="torso_collision_0"/>
+    <pair geom1="floor" geom2="torso_collision_1"/>
+    <pair geom1="floor" geom2="head_collision"/>
+    <pair geom1="floor" geom2="pelvis_link_collision"/>
+    <pair geom1="floor" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="floor" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="floor" geom2="left_knee_link_collision"/>
+    <pair geom1="floor" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="floor" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="floor" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="floor" geom2="right_knee_link_collision"/>
+    <pair geom1="floor" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="floor" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="floor" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="floor" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="floor" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="floor" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="floor" geom2="left_hand_collision"/>
+    <pair geom1="floor" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="floor" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="floor" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="floor" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="floor" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="floor" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_0" geom2="torso_collision_0"/>
+    <pair geom1="cart_0" geom2="torso_collision_1"/>
+    <pair geom1="cart_0" geom2="head_collision"/>
+    <pair geom1="cart_0" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_0" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_0" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_0" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_0" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_0" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_0" geom2="left_hand_collision"/>
+    <pair geom1="cart_0" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_0" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_0" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_0" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_1" geom2="torso_collision_0"/>
+    <pair geom1="cart_1" geom2="torso_collision_1"/>
+    <pair geom1="cart_1" geom2="head_collision"/>
+    <pair geom1="cart_1" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_1" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_1" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_1" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_1" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_1" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_1" geom2="left_hand_collision"/>
+    <pair geom1="cart_1" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_1" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_1" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_1" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_2" geom2="torso_collision_0"/>
+    <pair geom1="cart_2" geom2="torso_collision_1"/>
+    <pair geom1="cart_2" geom2="head_collision"/>
+    <pair geom1="cart_2" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_2" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_2" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_2" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_2" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_2" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_2" geom2="left_hand_collision"/>
+    <pair geom1="cart_2" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_2" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_2" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_2" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_3" geom2="torso_collision_0"/>
+    <pair geom1="cart_3" geom2="torso_collision_1"/>
+    <pair geom1="cart_3" geom2="head_collision"/>
+    <pair geom1="cart_3" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_3" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_3" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_3" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_3" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_3" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_3" geom2="left_hand_collision"/>
+    <pair geom1="cart_3" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_3" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_3" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_3" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_4" geom2="torso_collision_0"/>
+    <pair geom1="cart_4" geom2="torso_collision_1"/>
+    <pair geom1="cart_4" geom2="head_collision"/>
+    <pair geom1="cart_4" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_4" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_4" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_4" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_4" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_4" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_4" geom2="left_hand_collision"/>
+    <pair geom1="cart_4" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_4" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_4" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_4" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_5" geom2="torso_collision_0"/>
+    <pair geom1="cart_5" geom2="torso_collision_1"/>
+    <pair geom1="cart_5" geom2="head_collision"/>
+    <pair geom1="cart_5" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_5" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_5" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_5" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_5" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_5" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_5" geom2="left_hand_collision"/>
+    <pair geom1="cart_5" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_5" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_5" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_5" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_6" geom2="torso_collision_0"/>
+    <pair geom1="cart_6" geom2="torso_collision_1"/>
+    <pair geom1="cart_6" geom2="head_collision"/>
+    <pair geom1="cart_6" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_6" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_6" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_6" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_6" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_6" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_6" geom2="left_hand_collision"/>
+    <pair geom1="cart_6" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_6" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_6" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_6" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_7" geom2="torso_collision_0"/>
+    <pair geom1="cart_7" geom2="torso_collision_1"/>
+    <pair geom1="cart_7" geom2="head_collision"/>
+    <pair geom1="cart_7" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_7" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_7" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_7" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_7" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_7" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_7" geom2="left_hand_collision"/>
+    <pair geom1="cart_7" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_7" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_7" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_7" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_8" geom2="torso_collision_0"/>
+    <pair geom1="cart_8" geom2="torso_collision_1"/>
+    <pair geom1="cart_8" geom2="head_collision"/>
+    <pair geom1="cart_8" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_8" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_8" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_8" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_8" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_8" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_8" geom2="left_hand_collision"/>
+    <pair geom1="cart_8" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_8" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_8" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_8" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_9" geom2="torso_collision_0"/>
+    <pair geom1="cart_9" geom2="torso_collision_1"/>
+    <pair geom1="cart_9" geom2="head_collision"/>
+    <pair geom1="cart_9" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_9" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_9" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_9" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_9" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_9" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_9" geom2="left_hand_collision"/>
+    <pair geom1="cart_9" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_9" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_9" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_9" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_10" geom2="torso_collision_0"/>
+    <pair geom1="cart_10" geom2="torso_collision_1"/>
+    <pair geom1="cart_10" geom2="head_collision"/>
+    <pair geom1="cart_10" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_10" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_10" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_10" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_10" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_10" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_10" geom2="left_hand_collision"/>
+    <pair geom1="cart_10" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_10" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_10" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_10" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_11" geom2="torso_collision_0"/>
+    <pair geom1="cart_11" geom2="torso_collision_1"/>
+    <pair geom1="cart_11" geom2="head_collision"/>
+    <pair geom1="cart_11" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_11" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_11" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_11" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_11" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_11" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_11" geom2="left_hand_collision"/>
+    <pair geom1="cart_11" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_11" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_11" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_11" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_12" geom2="torso_collision_0"/>
+    <pair geom1="cart_12" geom2="torso_collision_1"/>
+    <pair geom1="cart_12" geom2="head_collision"/>
+    <pair geom1="cart_12" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_12" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_12" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_12" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_12" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_12" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_12" geom2="left_hand_collision"/>
+    <pair geom1="cart_12" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_12" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_12" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_12" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_13" geom2="torso_collision_0"/>
+    <pair geom1="cart_13" geom2="torso_collision_1"/>
+    <pair geom1="cart_13" geom2="head_collision"/>
+    <pair geom1="cart_13" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_13" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_13" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_13" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_13" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_13" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_13" geom2="left_hand_collision"/>
+    <pair geom1="cart_13" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_13" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_13" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_13" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_14" geom2="torso_collision_0"/>
+    <pair geom1="cart_14" geom2="torso_collision_1"/>
+    <pair geom1="cart_14" geom2="head_collision"/>
+    <pair geom1="cart_14" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_14" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_14" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_14" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_14" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_14" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_14" geom2="left_hand_collision"/>
+    <pair geom1="cart_14" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_14" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_14" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_14" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_15" geom2="torso_collision_0"/>
+    <pair geom1="cart_15" geom2="torso_collision_1"/>
+    <pair geom1="cart_15" geom2="head_collision"/>
+    <pair geom1="cart_15" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_15" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_15" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_15" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_15" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_15" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_15" geom2="left_hand_collision"/>
+    <pair geom1="cart_15" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_15" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_15" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_15" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_16" geom2="torso_collision_0"/>
+    <pair geom1="cart_16" geom2="torso_collision_1"/>
+    <pair geom1="cart_16" geom2="head_collision"/>
+    <pair geom1="cart_16" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_16" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_16" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_16" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_16" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_16" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_16" geom2="left_hand_collision"/>
+    <pair geom1="cart_16" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_16" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_16" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_16" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_17" geom2="torso_collision_0"/>
+    <pair geom1="cart_17" geom2="torso_collision_1"/>
+    <pair geom1="cart_17" geom2="head_collision"/>
+    <pair geom1="cart_17" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_17" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_17" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_17" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_17" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_17" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_17" geom2="left_hand_collision"/>
+    <pair geom1="cart_17" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_17" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_17" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_17" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_18" geom2="torso_collision_0"/>
+    <pair geom1="cart_18" geom2="torso_collision_1"/>
+    <pair geom1="cart_18" geom2="head_collision"/>
+    <pair geom1="cart_18" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_18" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_18" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_18" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_18" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_18" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_18" geom2="left_hand_collision"/>
+    <pair geom1="cart_18" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_18" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_18" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_18" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_19" geom2="torso_collision_0"/>
+    <pair geom1="cart_19" geom2="torso_collision_1"/>
+    <pair geom1="cart_19" geom2="head_collision"/>
+    <pair geom1="cart_19" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_19" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_19" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_19" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_19" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_19" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_19" geom2="left_hand_collision"/>
+    <pair geom1="cart_19" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_19" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_19" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_19" geom2="right_hand_collision"/>
+
+    <pair geom1="cart_20" geom2="torso_collision_0"/>
+    <pair geom1="cart_20" geom2="torso_collision_1"/>
+    <pair geom1="cart_20" geom2="head_collision"/>
+    <pair geom1="cart_20" geom2="pelvis_link_collision"/>
+    <pair geom1="cart_20" geom2="left_hip_pitch_link_collision"/>
+    <pair geom1="cart_20" geom2="left_hip_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="left_knee_link_collision"/>
+    <pair geom1="cart_20" geom2="left_ankle_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="right_hip_pitch_link_collision"/>
+    <pair geom1="cart_20" geom2="right_hip_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="right_knee_link_collision"/>
+    <pair geom1="cart_20" geom2="right_ankle_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="left_shoulder_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="left_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="left_elbow_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="left_elbow_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="left_wrist_pitch_link_collision"/>
+    <pair geom1="cart_20" geom2="left_hand_collision"/>
+    <pair geom1="cart_20" geom2="right_shoulder_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="right_shoulder_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="right_elbow_roll_link_collision"/>
+    <pair geom1="cart_20" geom2="right_elbow_yaw_link_collision"/>
+    <pair geom1="cart_20" geom2="right_wrist_pitch_link_collision"/>
+    <pair geom1="cart_20" geom2="right_hand_collision"/>
+
+  </contact>
+</mujoco>

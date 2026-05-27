@@ -1,6 +1,9 @@
 kinematics:
     zero_pos: [0.0, 0.0, 0.315053]
-    home_pos_z_delta: -0.005
+    # Optional: Set custom position [x, y, z]. If x=0 and y=0, COM-centering is applied to x.
+    home_qpos_xyz: [0.0, 0.0, 0.310053]  # old upright pose
+    # Optional: Set custom orientation (quaternion in wxyz format)
+    home_qpos_quat: [1.0, 0.0, 0.0, 0.0]  # upright, no pitch
     waist_roll_coef: 0.29166667
     waist_yaw_coef: 0.20833333
     waist_roll_backlash: 0.03
@@ -361,7 +364,8 @@ collision:
         pos: [0.0, -0.035346, -0.02275]
         size: [0.035, 0.06, 0.022169]
     ankle_roll_link:
-        type: mesh
+        pos: [-0.032, 0, 0.039]
+        size: [0.055, 0.021, 0.007]
     shoulder_yaw_link:
         pos: [0, 0, 0.04425]
         size: [0.023, 0.0129925, 0.027107]
@@ -369,10 +373,10 @@ collision:
         pos: [0.0, -0.00335, 0.04475]
         size: [0.0129925, 0.02965, 0.027563]
     left_hand:
-        pos: [0.0045, 0.047, -0.0205398]
+        pos: [0.0045, 0.047, -0.0174602]
         size: [0.037, 0.025, 0.01]
     right_hand:
-        pos: [-0.0045, -0.047, -0.0174602]
+        pos: [-0.0045, -0.047, -0.0205398]
         size: [0.037, 0.025, 0.01]
     left_leader_hand:
         pos: [0.0, -0.0465, -0.019]

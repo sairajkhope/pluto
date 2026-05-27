@@ -1,5 +1,6 @@
 ### Project ###
 .vscode/
+.cursor/
 ckpts/
 datasets/
 !toddlerbot/manipulation/datasets
@@ -178,3 +179,6 @@ cython_debug/
 # Datasets
 datasets/*.lz4
 toddlerbot/policies/checkpoints/teleop_model*
+
+viser_library_editted/
+toddlerbot/tools/edit_keyframe_viser_legacy.py

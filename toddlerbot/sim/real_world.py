@@ -22,6 +22,11 @@ from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.robot import Robot
 from toddlerbot.utils.device_registry import KIND_DYNAMIXEL_BUS, find_device_path
 
+try:
+    from toddlerbot.sensing.IMU import ThreadedIMU
+except Exception as e:
+    print(f"IMU module not found: {e}")
+
 
 class RealWorld(BaseSim):
     """Real-world robot interface class."""
@@ -147,7 +152,7 @@ class RealWorld(BaseSim):
         # Get the IMU data (optional)
         quat, ang_vel = None, None
         if self.imu:
-            quat, _, ang_vel = self.imu.get_latest_state()
+            _, _, quat, _, _, ang_vel = self.imu.get_latest_state()
 
         return Obs(
             time=time.monotonic(),

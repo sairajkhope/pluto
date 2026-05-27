@@ -20,7 +20,7 @@ if __name__ == "__main__":
     # Define the codec and create VideoWriter objects
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     fps = 30  # Frames per second
-    frame_size = (640, 360)  # Ensure frames are resized to this size
+    frame_size = (640, 480)  # Ensure frames are resized to this size
 
     video_writer_combined = cv2.VideoWriter(
         output_combined_path, fourcc, fps, (frame_size[0] * 2, frame_size[1])

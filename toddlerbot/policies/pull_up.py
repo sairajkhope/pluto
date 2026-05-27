@@ -85,6 +85,7 @@ class PullUpPolicy(BasePolicy):
         self.grasped_count = 0
         self.grasped_time = 0.0
         self.grasped_action = np.zeros(robot.nu, dtype=np.float32)
+        self.is_done = False
 
         pull_motion_path = os.path.join("motion", f"pull_up_pull{robot_suffix}.lz4")
         if os.path.exists(pull_motion_path):
@@ -172,5 +173,8 @@ class PullUpPolicy(BasePolicy):
             pull_action[self.waist_motor_indices] = 0.0
 
             self.last_action = pull_action
+
+            if curr_idx == len(self.pull_action_arr) - 1:
+                self.is_done = True
 
             return {}, pull_action

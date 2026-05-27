@@ -14,14 +14,15 @@ class DummyRobot:
     """Dummy robot for testing motor control parameters."""
 
     def __init__(self, dof: int = 1):
-        self.motor_kps = np.ones(dof) * 10.0
-        self.motor_kds = np.ones(dof) * 0.0
+        self.motor_kp_sim = np.ones(dof) * 10.0
+        self.motor_kd_sim = np.ones(dof) * 0.0
         self.motor_tau_max = np.ones(dof) * 0.68
         self.motor_q_dot_max = np.ones(dof) * 6.52
         self.motor_tau_q_dot_max = np.ones(dof) * 0.49
         self.motor_q_dot_tau_max = np.ones(dof) * 1.0
         self.motor_tau_brake_max = np.ones(dof) * 1.54
         self.motor_kd_min = np.ones(dof) * 0.341
+        self.passive_active_ratio = 1.0
 
 
 def main():
@@ -36,13 +37,15 @@ def main():
     q = np.ones((200, dof)) * q_test
     q_dot = q_dot_vals[:, None]
 
+    q_dot_dot = np.zeros((200, dof))
+
     # Evaluate for a = -0.5
     a_neg = np.ones((200, dof)) * -0.5
-    tau_neg = controller.step(q, q_dot, a_neg)
+    tau_neg = controller.step(q, q_dot, q_dot_dot, a_neg)
 
     # Evaluate for a = 0.5
     a_pos = np.ones((200, dof)) * 0.5
-    tau_pos = controller.step(q, q_dot, a_pos)
+    tau_pos = controller.step(q, q_dot, q_dot_dot, a_pos)
 
     # Plot
     plt.figure(figsize=(10, 6))

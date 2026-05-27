@@ -94,8 +94,35 @@ echo "Configuring TensorRT Python bindings..."
 echo "/usr/lib/python3.10/dist-packages" \
     > $CONDA_PREFIX/lib/python3.10/site-packages/tensorrt_global.pth
 
+echo "Installing ONNX-TensorRT..."
+# Clone and build onnx-tensorrt
+git clone --recursive https://github.com/onnx/onnx-tensorrt.git
+cd onnx-tensorrt
+git checkout release/10.13-GA
+python -c "import setuptools; setuptools.setup(name='onnx_tensorrt', version='10.13.0', packages=['onnx_tensorrt'], install_requires=['pycuda', 'numpy', 'onnx'])" bdist_egg
+
+# Install the egg
+cp dist/onnx_tensorrt-10.13.0-py3.10.egg $CONDA_PREFIX/lib/python3.10/site-packages/
+echo "$CONDA_PREFIX/lib/python3.10/site-packages/onnx_tensorrt-10.13.0-py3.10.egg" > $CONDA_PREFIX/lib/python3.10/site-packages/onnx_tensorrt.pth
+
+# Verify installation
+pip list | grep onnx_tensorrt
+
+# Go back and clean up
+cd ..
+rm -rf onnx-tensorrt
+
 echo "Cleaning up downloaded files..."
 rm *.whl
 rm *.deb
 
-echo "Depth estimation setup complete! You can now use foundation stereo models for depth estimation."
+echo ""
+echo "=========================================="
+echo "Depth estimation setup complete!"
+echo "=========================================="
+echo ""
+echo "Next steps:"
+echo "1. Download the TensorRT engine file from:"
+echo "   https://drive.google.com/drive/folders/1lha_uut-M5f63L8MkBZnnlF-yQJe0VD_?usp=sharing"
+echo "2. Place it in: toddlerbot/depth/models/"
+echo "3. See toddlerbot/depth/README.md for usage instructions"

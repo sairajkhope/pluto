@@ -64,6 +64,10 @@ class WalkEnv(MJXEnv, env_name="walk"):
 
         self.min_feet_y_dist = cfg.rewards.min_feet_y_dist
         self.max_feet_y_dist = cfg.rewards.max_feet_y_dist
+        self.min_feet_xy_dist = cfg.rewards.min_feet_xy_dist
+        self.max_feet_xy_dist = cfg.rewards.max_feet_xy_dist
+        self.swing_height = cfg.rewards.swing_height
+        self.feet_phase_tracking_sigma = cfg.rewards.feet_phase_tracking_sigma
 
         super().__init__(
             name,
@@ -104,12 +108,102 @@ class WalkEnv(MJXEnv, env_name="walk"):
             mujoco.mjv_connector(geom, mujoco.mjtGeom.mjGEOM_LINE, 5, p1, p2)
             renderer.scene.ngeom += 1
 
+    def visualize_feet_phase(
+        self,
+        renderer: mujoco.Renderer,
+        state: State,
+        mj_data: mujoco.MjData,
+        sphere_size: float = 0.015,
+    ):
+        """Visualize expected vs actual foot positions based on gait phase.
+
+        Shows:
+        - Actual foot positions (green spheres)
+        - Expected foot height targets (blue for left, orange for right)
+        """
+        # Get phase from state
+        phase_sin = state.info["phase_signal"][0]
+        phase_cos = state.info["phase_signal"][1]
+        phase = numpy.arctan2(float(phase_sin), float(phase_cos))
+        phase = numpy.mod(phase + 2 * numpy.pi, 2 * numpy.pi)
+
+        # Check if standing
+        is_standing = numpy.linalg.norm(state.info["command_obs"]) < 1e-6
+
+        # Get actual foot positions from mj_data (site positions)
+        left_foot_idx = self.end_effector_site_indices["left_foot_center"]
+        right_foot_idx = self.end_effector_site_indices["right_foot_center"]
+        left_foot_pos = mj_data.site_xpos[left_foot_idx].copy()
+        right_foot_pos = mj_data.site_xpos[right_foot_idx].copy()
+
+        # Compute expected heights
+        if is_standing:
+            expected_z_left = 0.0
+            expected_z_right = 0.0
+        else:
+            expected_z_left = float(
+                self._expected_foot_height(
+                    jnp.array(phase), self.swing_height, is_left=True
+                )
+            )
+            expected_z_right = float(
+                self._expected_foot_height(
+                    jnp.array(phase), self.swing_height, is_left=False
+                )
+            )
+
+        # Expected positions (same xy as actual, but expected z)
+        expected_left_pos = left_foot_pos.copy()
+        expected_left_pos[2] = expected_z_left
+        expected_right_pos = right_foot_pos.copy()
+        expected_right_pos[2] = expected_z_right
+
+        # Draw actual foot positions (green spheres)
+        for pos in [left_foot_pos, right_foot_pos]:
+            i = renderer.scene.ngeom
+            geom = renderer.scene.geoms[i]
+            mujoco.mjv_initGeom(
+                geom,
+                type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                size=[sphere_size, 0, 0],
+                pos=pos,
+                mat=numpy.eye(3).flatten(),
+                rgba=[0, 1, 0, 0.7],  # green for actual
+            )
+            renderer.scene.ngeom += 1
+
+        # Draw expected left foot position (blue sphere)
+        i = renderer.scene.ngeom
+        geom = renderer.scene.geoms[i]
+        mujoco.mjv_initGeom(
+            geom,
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=[sphere_size, 0, 0],
+            pos=expected_left_pos,
+            mat=numpy.eye(3).flatten(),
+            rgba=[0, 0.5, 1, 0.7],  # blue for expected left
+        )
+        renderer.scene.ngeom += 1
+
+        # Draw expected right foot position (orange sphere)
+        i = renderer.scene.ngeom
+        geom = renderer.scene.geoms[i]
+        mujoco.mjv_initGeom(
+            geom,
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=[sphere_size, 0, 0],
+            pos=expected_right_pos,
+            mat=numpy.eye(3).flatten(),
+            rgba=[1, 0.5, 0, 0.7],  # orange for expected right
+        )
+        renderer.scene.ngeom += 1
+
     def render(
         self,
-        states: List[State],
+        states: list[State],
         height: int = 240,
         width: int = 320,
-        camera: Optional[str] = None,
+        camera: str | None = None,
     ):
         """Render environment states with path visualization and force arrows."""
         renderer = mujoco.Renderer(self.sys.mj_model, height=height, width=width)
@@ -133,12 +227,13 @@ class WalkEnv(MJXEnv, env_name="walk"):
                 state.info["state_ref"]["path_rot"],
             )
             self.visualize_force_arrow(renderer, state, push_id, push_force)
+            self.visualize_feet_phase(renderer, state, d)
             image_list.append(renderer.render())
 
         return image_list
 
     def _sample_command(
-        self, rng: jax.Array, last_command: Optional[jax.Array] = None
+        self, rng: jax.Array, last_command: jax.Array | None = None
     ) -> jax.Array:
         """Generates a random command array based on the provided random number generator state and optionally the last command.
 
@@ -357,6 +452,43 @@ class WalkEnv(MJXEnv, env_name="walk"):
         reward = (jnp.exp(-jnp.abs(d_min) * 100) + jnp.exp(-jnp.abs(d_max) * 100)) / 2
         return reward
 
+    def _reward_feet_xy_distance(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Binary reward for feet xy distance within acceptable range.
+
+        Gives max reward (1.0) if Euclidean xy distance between feet is within
+        [min_feet_xy_dist, max_feet_xy_dist], otherwise gives 0.
+
+        Args:
+            pipeline_state: Current simulation state with body positions.
+            info: Additional state information (unused).
+            action: The action taken (unused).
+
+        Returns:
+            1.0 if feet xy distance is within range, 0.0 otherwise.
+        """
+        # Get feet positions in torso-relative frame
+        torso_rot = R.from_quat(
+            jnp.concatenate([pipeline_state.x.rot[0][1:], pipeline_state.x.rot[0][:1]])
+        )
+        feet_vec = (
+            pipeline_state.x.pos[self.feet_link_ids[0]]
+            - pipeline_state.x.pos[self.feet_link_ids[1]]
+        )
+        feet_vec_rotated = torso_rot.inv().apply(feet_vec)
+
+        # Euclidean distance in xy plane
+        feet_xy_dist = jnp.sqrt(feet_vec_rotated[0] ** 2 + feet_vec_rotated[1] ** 2)
+
+        # Binary reward: 1.0 if within range, 0.0 otherwise
+        in_range = (feet_xy_dist >= self.min_feet_xy_dist) & (
+            feet_xy_dist <= self.max_feet_xy_dist
+        )
+        reward = jnp.where(in_range, 1.0, 0.0)
+
+        return reward
+
     def _reward_feet_slip(
         self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
     ) -> jax.Array:
@@ -427,3 +559,178 @@ class WalkEnv(MJXEnv, env_name="walk"):
         error = hip_pitch_joint_pos + ank_pitch_joint_pos - knee_joint_pos
         reward = -jnp.mean(error**2)
         return reward
+
+    def _reward_hip_yaw(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Calculates the alignment reward for ground contact based on joint positions.
+
+        Args:
+            pipeline_state (base.State): The current state of the pipeline containing joint positions.
+            info (dict[str, Any]): Additional information, not used in this function.
+            action (jax.Array): The action taken, not used in this function.
+
+        Returns:
+            jax.Array: The calculated reward based on the alignment of hip, knee, and ankle joint positions.
+        """
+        hip_yaw_joint_pos = jnp.abs(
+            pipeline_state.q[self.q_start_idx + self.hip_yaw_joint_indices]
+        )
+        reward = -jnp.mean(hip_yaw_joint_pos**2)
+        reward *= jnp.abs(info["command_obs"][-1]) < 1e-6
+        return reward
+
+    def _expected_foot_height(
+        self, phase: jax.Array, swing_height: float, is_left: bool
+    ) -> jax.Array:
+        """Compute expected foot height based on gait phase using asymmetric timing.
+
+        Each foot swings for half the cycle and stays grounded for the other half,
+        guaranteeing one foot is always on the ground.
+
+        Args:
+            phase: Gait phase in [0, 2π] range.
+            swing_height: Maximum foot height during swing (meters).
+            is_left: True for left foot, False for right foot.
+
+        Returns:
+            Expected foot height (0 when grounded, up to swing_height during swing).
+        """
+
+        def cubic_bezier_interpolation(
+            y_start: jax.Array, y_end: jax.Array, x: jax.Array
+        ) -> jax.Array:
+            """Smooth interpolation using cubic Bézier (smoothstep)."""
+            y_diff = y_end - y_start
+            bezier = x**3 + 3 * (x**2 * (1 - x))  # = 3x² - 2x³
+            return y_start + y_diff * bezier
+
+        # Left foot: swings during [0, π], grounded during [π, 2π]
+        # Right foot: grounded during [0, π], swings during [π, 2π]
+        if is_left:
+            in_swing = phase < jnp.pi
+            swing_progress = phase / jnp.pi  # 0→1 during [0, π]
+        else:
+            in_swing = phase >= jnp.pi
+            swing_progress = (phase - jnp.pi) / jnp.pi  # 0→1 during [π, 2π]
+
+        # Within swing phase: first half rises, second half falls
+        # progress [0, 0.5] → rise from 0 to swing_height
+        # progress [0.5, 1] → fall from swing_height to 0
+        rise = cubic_bezier_interpolation(
+            jnp.array(0.0), jnp.array(swing_height), 2 * swing_progress
+        )
+        fall = cubic_bezier_interpolation(
+            jnp.array(swing_height), jnp.array(0.0), 2 * swing_progress - 1
+        )
+        swing_height_val = jnp.where(swing_progress <= 0.5, rise, fall)
+
+        # Return swing height if in swing phase, 0 if grounded
+        return jnp.where(in_swing, swing_height_val, 0.0)
+
+    def _reward_feet_phase(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Reward for tracking desired foot height based on gait phase.
+
+        Uses asymmetric timing where each foot swings for half the cycle,
+        ensuring one foot is always grounded.
+
+        When command is zero (standing), expected height is 0 for both feet,
+        encouraging the robot to keep both feet on the ground.
+
+        Args:
+            pipeline_state: Current simulation state with site positions.
+            info: Contains phase_signal [sin, cos] and command_obs.
+            action: The action taken (unused).
+
+        Returns:
+            Exponential reward based on foot height tracking error.
+        """
+        # Check if standing (zero command)
+        is_standing = jnp.linalg.norm(info["command_obs"]) < 1e-6
+
+        # Get phase from sin/cos observation and convert to [0, 2π]
+        phase_sin = info["phase_signal"][0]
+        phase_cos = info["phase_signal"][1]
+        phase = jnp.arctan2(phase_sin, phase_cos)  # [-π, π]
+        phase = jnp.mod(phase + 2 * jnp.pi, 2 * jnp.pi)  # [0, 2π]
+
+        # Get actual foot heights from site positions (z-coordinate)
+        left_foot_idx = self.end_effector_site_indices["left_foot_center"]
+        right_foot_idx = self.end_effector_site_indices["right_foot_center"]
+
+        foot_z_left = pipeline_state.site_xpos[left_foot_idx][2]
+        foot_z_right = pipeline_state.site_xpos[right_foot_idx][2]
+
+        # Compute expected heights based on phase
+        # When standing: both feet should be on ground (height = 0)
+        # When walking: use phase-based asymmetric swing
+        expected_z_left_walk = self._expected_foot_height(
+            phase, self.swing_height, is_left=True
+        )
+        expected_z_right_walk = self._expected_foot_height(
+            phase, self.swing_height, is_left=False
+        )
+
+        expected_z_left = jnp.where(is_standing, 0.0, expected_z_left_walk)
+        expected_z_right = jnp.where(is_standing, 0.0, expected_z_right_walk)
+
+        # Height tracking error
+        error_left = jnp.square(foot_z_left - expected_z_left)
+        error_right = jnp.square(foot_z_right - expected_z_right)
+        total_error = error_left + error_right
+
+        # Exponential reward for precise tracking
+        base_reward = jnp.exp(-total_error / self.feet_phase_tracking_sigma)
+
+        # Bonus multiplier: higher expected height → more reward for matching
+        # Incentivizes lifting feet (harder against gravity)
+        # expected=0 → 1.0x, expected=swing_height → 2.0x
+        max_expected = jnp.maximum(expected_z_left, expected_z_right)
+        height_bonus = 1.0 + max_expected / self.swing_height
+
+        reward = base_reward * height_bonus
+
+        return reward
+
+    def _reward_penalty_feet_ori(
+        self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
+    ) -> jax.Array:
+        """Penalize feet orientation deviation from flat (tippy-toe behavior).
+
+        When feet are flat on the ground, gravity projected into foot frame
+        should point straight down [0, 0, -1]. Deviation indicates tilted feet.
+
+        Args:
+            pipeline_state: Current simulation state with body rotations.
+            info: Additional state information (unused).
+            action: The action taken (unused).
+
+        Returns:
+            Negative penalty proportional to feet tilt.
+        """
+        # Gravity vector in world frame
+        gravity_world = jnp.array([0.0, 0.0, -1.0])
+
+        # Get foot quaternions [w,x,y,z] -> convert to [x,y,z,w] for R.from_quat
+        left_quat_wxyz = pipeline_state.x.rot[self.feet_link_ids[0]]
+        right_quat_wxyz = pipeline_state.x.rot[self.feet_link_ids[1]]
+
+        left_quat_xyzw = jnp.concatenate([left_quat_wxyz[1:], left_quat_wxyz[:1]])
+        right_quat_xyzw = jnp.concatenate([right_quat_wxyz[1:], right_quat_wxyz[:1]])
+
+        # Rotate gravity into foot frame (inverse rotation)
+        left_rot = R.from_quat(left_quat_xyzw)
+        right_rot = R.from_quat(right_quat_xyzw)
+
+        left_gravity = left_rot.inv().apply(gravity_world)
+        right_gravity = right_rot.inv().apply(gravity_world)
+
+        # If foot is flat, gravity in foot frame is [0, 0, -1]
+        # Deviation from flat = sqrt(gx² + gy²)
+        left_tilt = jnp.sqrt(jnp.sum(jnp.square(left_gravity[:2])))
+        right_tilt = jnp.sqrt(jnp.sum(jnp.square(right_gravity[:2])))
+
+        # Return negative penalty (reward scales should be negative)
+        return -(left_tilt + right_tilt)

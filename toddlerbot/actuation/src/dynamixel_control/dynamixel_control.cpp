@@ -61,7 +61,7 @@ void DynamixelControl::initialize_motors()
   // }
   // catch (const std::exception &e)
   // {
-  //   std::cerr << "[Initialize] reboot failed: " << e.what() << std::endl;
+  //   std::cout << "[Initialize] reboot failed: " << e.what() << std::endl;
   // }
 
   // 1) Clear multi-turn and error
@@ -74,7 +74,7 @@ void DynamixelControl::initialize_motors()
   }
   catch (const std::exception &e)
   {
-    std::cerr << "[Initialize] clear multi-turn/error failed: " << e.what() << std::endl;
+    std::cout << "[Initialize] Clear multi-turn/error failed: " << e.what() << std::endl;
   }
 
   // 2) Voltage check
@@ -86,7 +86,7 @@ void DynamixelControl::initialize_motors()
     {
       if (vin[i] < 10.0f)
       {
-        std::cerr << "[Initialize] voltage too low!" << std::endl;
+        std::cout << "[Initialize] Voltage too low!" << std::endl;
         break;
       }
       std::cout << vin[i];
@@ -98,7 +98,7 @@ void DynamixelControl::initialize_motors()
   }
   catch (const std::exception &e)
   {
-    std::cerr << "[Initialize] read_vin failed: " << e.what() << std::endl;
+    std::cout << "[Initialize] read_vin failed: " << e.what() << std::endl;
   }
 
   // 3) Return‐delay & gains
@@ -110,7 +110,7 @@ void DynamixelControl::initialize_motors()
     }
     catch (const std::exception &e)
     {
-      std::cerr << "[Initialize] sync_write(" << ctx << ") failed: " << e.what() << std::endl;
+      std::cout << "[Initialize] sync_write(" << ctx << ") failed: " << e.what() << std::endl;
     }
   };
   // Return delay time
@@ -143,7 +143,7 @@ void DynamixelControl::initialize_motors()
   }
   catch (const std::exception &e)
   {
-    std::cerr << "[Initialize] enable torque failed: " << e.what() << std::endl;
+    std::cout << "[Initialize] Enable torque failed: " << e.what() << std::endl;
   }
 
   // 5) Update zero positions based on current readings
@@ -160,7 +160,7 @@ void DynamixelControl::initialize_motors()
   }
   catch (const std::exception &e)
   {
-    std::cerr << "[Initialize] update zero point failed: " << e.what() << std::endl;
+    std::cout << "[Initialize] Update zero point failed: " << e.what() << std::endl;
   }
 }
 
@@ -184,7 +184,7 @@ void DynamixelControl::disable_motors(const std::vector<int> &ids)
 void DynamixelControl::enable_motors(const std::vector<int> &ids)
 {
   const auto &targets = ids.empty() ? motor_ids_ : ids;
-  client_->set_torque_enabled(targets, true);
+  client_->set_torque_enabled(targets, true, -1);
 }
 
 // Write a new position command (in radians)
